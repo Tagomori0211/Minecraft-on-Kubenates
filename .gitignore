@@ -208,3 +208,14 @@ __marimo__/
 
 #Terraform 
 Terraform/secret.tfvars
+# Terraform generated files
+.terraform/
+*.tfplan
+*.tfplan.binary
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+crash.log
+# Specific to some terraform workflows
+# .terraform-version
+# .vscode/
