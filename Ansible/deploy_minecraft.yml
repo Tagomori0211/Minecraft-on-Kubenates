@@ -1,0 +1,26 @@
+---
+- name: Deploy Minecraft Cluster
+  hosts: app
+  become: yes
+
+  tasks:
+    # 1. 転送先のディレクトリを作る
+    - name: Create manifests directory
+      file:
+        path: /home/shinari/k8s_manifests
+        state: directory
+        owner: shinari
+        group: shinari
+
+    # 2. マニフェストフォルダごと転送する
+    - name: Copy kubernetes manifests
+      copy:
+        src: k8s_manifests/
+        dest: /home/shinari/k8s_manifests/
+        owner: shinari
+        group: shinari
+        mode: '0644'
+
+    # 3. 転送したマニフェストを一括適用する
+    - name: Apply all manifests
+      command: k3s kubectl apply -f /home/shinari/k8s_manifests/

@@ -1,0 +1,84 @@
+# Ansible/k8s_manifests/backend.yaml
+---
+# === 1. ロビーサーバー ===
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-lobby
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources: { requests: { storage: 5Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-lobby
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mc-lobby } }
+  template:
+    metadata: { labels: { app: mc-lobby } }
+    spec:
+      containers:
+        - name: minecraft
+          image: itzg/minecraft-server # ★タグ(:java17)を削除
+          env:
+            - { name: EULA, value: "TRUE" }
+            - { name: TYPE, value: "PAPER" }
+            - { name: ONLINE_MODE, value: "FALSE" }
+            - { name: MEMORY, value: "4G" }
+          ports: [{ containerPort: 25565 }]
+          volumeMounts: [{ mountPath: /data, name: data }]
+      volumes: [{ name: data, persistentVolumeClaim: { claimName: pvc-lobby } }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-lobby
+spec:
+  selector: { app: mc-lobby }
+  ports: [{ port: 25565 }]
+  type: ClusterIP
+
+---
+# === 2. サバイバルサーバー ===
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-survival
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources: { requests: { storage: 20Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-survival
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mc-survival } }
+  template:
+    metadata: { labels: { app: mc-survival } }
+    spec:
+      containers:
+        - name: minecraft
+          image: itzg/minecraft-server # ★タグ(:java17)を削除
+          env:
+            - { name: EULA, value: "TRUE" }
+            - { name: TYPE, value: "PAPER" }
+            - { name: ONLINE_MODE, value: "FALSE" }
+            - { name: MEMORY, value: "8G" }
+          ports: [{ containerPort: 25565 }]
+          volumeMounts: [{ mountPath: /data, name: data }]
+      volumes: [{ name: data, persistentVolumeClaim: { claimName: pvc-survival } }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-survival
+spec:
+  selector: { app: mc-survival }
+  ports: [{ port: 25565 }]
+  type: ClusterIP

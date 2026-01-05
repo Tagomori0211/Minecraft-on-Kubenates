@@ -1,0 +1,31 @@
+---
+- name: Setup k3s on App Server
+  hosts: app        # inventory.iniの [app] グループ (192.168.0.151) を対象にする
+  become: yes       # sudo権限を使って実行する（インストールに必要）
+
+  tasks:
+    # 1. まずは下準備。apt update をしておきます
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600 # 1時間以内ならキャッシュを使って時短する
+
+    # 2. k3sのインストールスクリプトを取得するために curl が必要です
+    - name: Install dependencies (curl)
+      apt:
+        name: curl
+        state: present
+
+    # 3. k3sをインストールします（公式スクリプトを使用）
+    # shellモジュールは強力ですが、毎回走ると遅いので条件を付けます
+    - name: Install k3s
+      shell: curl -sfL https://get.k3s.io | sh -
+      args:
+        creates: /usr/local/bin/k3s # このファイルがあれば「インストール済み」とみなしてスキップする（冪等性の確保）
+
+    # 4. サービスが起動しているか確認します
+    - name: Ensure k3s service is running
+      systemd:
+        name: k3s
+        state: started
+        enabled: yes
