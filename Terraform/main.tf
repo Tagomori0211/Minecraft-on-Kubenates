@@ -1,25 +1,38 @@
 resource "proxmox_vm_qemu" "server_vms" {
-  # 【重要】for_eachを使って、tfvarsの "vms" リスト分だけ繰り返します
   for_each = var.vms
 
   # 基本設定
-  name        = each.key                 # mapのキー名 (例: devops-server) がVM名になります
+  name        = each.key
   target_node = var.common_config.target_node
-  vmid        = each.value.vmid          # tfvarsの vmid (103, 104)
-  description        = each.value.desc          # 説明文
+  vmid        = each.value.vmid
+  description = each.value.desc
 
   # テンプレート設定
-  clone       = "ubuntu-2404-cloud-init"        
-  # ※Proxmox上のテンプレート名に合わせてください
-  # id指定でクローンする場合は full_clone = true などが必要になる場合がありますが
-  # 通常はテンプレート名を指定してクローンします。
-  # もしID指定が必要なプロバイダ設定の場合は適宜修正してください。
+  clone      = "ubuntu-2404-cloud-init"
+  full_clone = true
 
   # リソース設定
-  cores       = each.value.cores
-  sockets     = 1                        # ソケットは1、コア数で調整
-  memory      = each.value.memory
-  
+  cores   = each.value.cores
+  sockets = 1
+  memory  = each.value.memory
+
+  # ★ SCSIコントローラ（重要）
+  scsihw = "virtio-scsi-pci"
+
+  # ★ ディスク設定
+  disk {
+    slot    = "scsi0"
+    size    = each.value.disk_size  # 例: "32G"
+    storage = "local-lvm"
+    type    = "disk"
+  }
+
+  # ★ Cloud-Initドライブ
+  disk {
+    slot    = "ide2"
+    type    = "cloudinit"
+    storage = "local-lvm"
+  }
 
   # ネットワーク設定
   network {
@@ -27,15 +40,30 @@ resource "proxmox_vm_qemu" "server_vms" {
     model  = "virtio"
     bridge = "vmbr0"
   }
+ #  シリアルコンソール設定
+  serial {
+    id   = 0
+    type = "socket"
+  }
 
-  # Cloud-Init設定 (IP固定化)
-  os_type = "cloud-init"
-  
-  # IPアドレスの設定
-  # each.value.ip で各VMのIPを取得、common_configからGWを取得
+  #  VGA設定（シリアルコンソール使用）
+  vga {
+    type = "serial0"
+  }
+
+  # Cloud-Init設定
+  os_type   = "cloud-init"
   ipconfig0 = "ip=${each.value.ip}/24,gw=${var.common_config.gateway}"
-  
-  # ユーザー設定（必要に応じて）
-   ciuser = "shinari"
-  # sshkeys = "..."
+  ciuser    = "shinari"
+  sshkeys    = var.ssh_public_key
+
+  # ★ qemu-guest-agent有効化
+  agent = 1
+
+  # 起動待機（Cloud-Init完了まで）
+  lifecycle {
+    ignore_changes = [
+      disk,  # ディスクリサイズ後の差分を無視
+    ]
+  }
 }

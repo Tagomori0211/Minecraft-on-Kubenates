@@ -18,9 +18,15 @@ variable "vms" {
     cores  = number # CPUコア数
     memory = number # メモリ容量(MB)
     ip     = string # 固定IPアドレス
+    disk_size = string  # ★  "32G", "64G" など
   }))
 }
 
+variable "ssh_public_key" {
+  description = "SSH公開鍵"
+  type        = string
+  sensitive   = true
+}
 
 variable "proxmox_api_url" {
   description = "Proxmox APIのURL (例: https://192.168.0.30:8006/api2/json)"

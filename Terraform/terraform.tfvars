@@ -14,6 +14,7 @@ vms = {
     cores  = 4
     memory = 4096          # 4GB = 4096MB
     ip     = "192.168.0.150"
+    disk_size = "120G"
   },
 
   # 2台目: App機 (Javaマイクラ k3sクラスタ用)
@@ -23,6 +24,7 @@ vms = {
     cores  = 16            # 16コア
     memory = 16384         # 16GB = 16384MB
     ip     = "192.168.0.151"
+    disk_size = "200G"
   }
 }
 
