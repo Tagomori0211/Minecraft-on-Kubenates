@@ -1,7 +1,3 @@
-# main.tf
-
-# プロバイダー設定などは provider.tf などに記述済みと仮定しています
-
 resource "proxmox_vm_qemu" "server_vms" {
   # 【重要】for_eachを使って、tfvarsの "vms" リスト分だけ繰り返します
   for_each = var.vms

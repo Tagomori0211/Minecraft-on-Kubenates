@@ -1,5 +1,3 @@
-# variables.tf
-
 # 共通で使用する設定値
 variable "common_config" {
   description = "全VMで共通の設定 (ゲートウェイ、テンプレートIDなど)"
@@ -21,4 +19,22 @@ variable "vms" {
     memory = number # メモリ容量(MB)
     ip     = string # 固定IPアドレス
   }))
+}
+
+
+variable "proxmox_api_url" {
+  description = "Proxmox APIのURL (例: https://192.168.0.30:8006/api2/json)"
+  type        = string
+}
+
+variable "proxmox_user" {
+  description = "Proxmoxのユーザー名 (root@pam)"
+  type        = string
+  default     = "root@pam" 
+}
+
+variable "proxmox_password" {
+  description = "Proxmoxのパスワード (sensitive指定でログ出力を抑制)"
+  type        = string
+  sensitive   = true # 実行結果(ログ)にパスワードが表示されないようにする安全装置
 }
