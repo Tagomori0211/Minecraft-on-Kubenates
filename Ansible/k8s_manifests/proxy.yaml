@@ -1,4 +1,54 @@
-# Ansible/k8s_manifests/proxy.yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: velocity-config
+data:
+  velocity.toml: |
+    config-version = "2.7"
+    bind = "0.0.0.0:25577"
+    motd = "<#09add3>TAK Pipeline Server"
+    show-max-players = 500
+    online-mode = false
+    force-key-authentication = false
+    prevent-client-proxy-connections = false
+    player-info-forwarding-mode = "modern"
+    forwarding-secret-file = "forwarding.secret"
+    announce-forge = false
+    kick-existing-players = false
+    ping-passthrough = "DISABLED"
+    enable-player-address-logging = true
+
+    [servers]
+    lobby = "svc-lobby:25565"
+    survival = "svc-survival:25565"
+
+    try = ["lobby"]
+
+    [forced-hosts]
+
+    [advanced]
+    compression-threshold = 256
+    compression-level = -1
+    login-ratelimit = 3000
+    connection-timeout = 5000
+    read-timeout = 30000
+    haproxy-protocol = false
+    tcp-fast-open = false
+    bungee-plugin-message-channel = true
+    show-ping-requests = false
+    failover-on-unexpected-server-disconnect = true
+    announce-proxy-commands = true
+    log-command-executions = false
+    log-player-connections = true
+    accepts-transfers = false
+
+    [query]
+    enabled = false
+    port = 25577
+    map = "Velocity"
+    show-plugins = false
+  forwarding.secret: "tak-pipeline-secret-123"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -16,30 +66,26 @@ spec:
           env:
             - name: TYPE
               value: "VELOCITY"
-            - name: SERVER_PORT
-              value: "25565"
-            # サーバーリストの定義
-            # 名前:ホスト名:ポート の形式で記述
-            # k8sの内部DNSで解決されるので Service名 を書けば繋がります
-            - name: SERVERS
-              value: "lobby:svc-lobby:25565, survival:svc-survival:25565"
-            - name: TRY_TO_CONNECT
-              value: "lobby" # 最初にログインする場所
-            - name: FORCE_DEFAULT_SERVER
-              value: "true"  # 毎回必ずロビーからスタートさせる
           ports:
-            - containerPort: 25565
+            - containerPort: 25577
               name: minecraft
+          volumeMounts:
+            - name: velocity-config
+              mountPath: /config    # ← /server ではなく /config にマウント
+      volumes:
+        - name: velocity-config
+          configMap:
+            name: velocity-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: svc-velocity
 spec:
-  selector:
-    app: velocity
-  type: LoadBalancer # ここだけ外部公開する (192.168.0.151)
+  selector: { app: velocity }
+  type: LoadBalancer
   ports:
     - port: 25565
-      targetPort: 25565
+      targetPort: 25577
       protocol: TCP
+      name: minecraft

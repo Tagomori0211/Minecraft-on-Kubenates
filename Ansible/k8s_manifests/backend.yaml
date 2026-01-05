@@ -1,4 +1,17 @@
-# Ansible/k8s_manifests/backend.yaml
+---
+# === ConfigMap: Velocity設定 ===
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: paper-velocity-config
+data:
+  paper-global.yml: |
+    proxies:
+      velocity:
+        enabled: true
+        online-mode: true
+        secret: "tak-pipeline-secret-123"
+
 ---
 # === 1. ロビーサーバー ===
 apiVersion: v1
@@ -22,15 +35,26 @@ spec:
     spec:
       containers:
         - name: minecraft
-          image: itzg/minecraft-server # ★タグ(:java17)を削除
+          image: itzg/minecraft-server
           env:
             - { name: EULA, value: "TRUE" }
             - { name: TYPE, value: "PAPER" }
-            - { name: ONLINE_MODE, value: "FALSE" }
             - { name: MEMORY, value: "4G" }
+            - { name: ONLINE_MODE, value: "FALSE" }
+            # AdvancedPortalsプラグインを自動ダウンロード
+            - name: SPIGET_RESOURCES
+              value: "53051"  # AdvancedPortalsのSpigot Resource ID
           ports: [{ containerPort: 25565 }]
-          volumeMounts: [{ mountPath: /data, name: data }]
-      volumes: [{ name: data, persistentVolumeClaim: { claimName: pvc-lobby } }]
+          volumeMounts:
+            - { mountPath: /data, name: data }
+            - mountPath: /config/paper-global.yml
+              name: velocity-config
+              subPath: paper-global.yml
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: pvc-lobby }
+        - name: velocity-config
+          configMap: { name: paper-velocity-config }
 ---
 apiVersion: v1
 kind: Service
@@ -64,15 +88,26 @@ spec:
     spec:
       containers:
         - name: minecraft
-          image: itzg/minecraft-server # ★タグ(:java17)を削除
+          image: itzg/minecraft-server
           env:
             - { name: EULA, value: "TRUE" }
             - { name: TYPE, value: "PAPER" }
-            - { name: ONLINE_MODE, value: "FALSE" }
             - { name: MEMORY, value: "8G" }
+            - { name: ONLINE_MODE, value: "FALSE" }
+            # AdvancedPortalsプラグインを自動ダウンロード
+            - name: SPIGET_RESOURCES
+              value: "53051"
           ports: [{ containerPort: 25565 }]
-          volumeMounts: [{ mountPath: /data, name: data }]
-      volumes: [{ name: data, persistentVolumeClaim: { claimName: pvc-survival } }]
+          volumeMounts:
+            - { mountPath: /data, name: data }
+            - mountPath: /config/paper-global.yml
+              name: velocity-config
+              subPath: paper-global.yml
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: pvc-survival }
+        - name: velocity-config
+          configMap: { name: paper-velocity-config }
 ---
 apiVersion: v1
 kind: Service
