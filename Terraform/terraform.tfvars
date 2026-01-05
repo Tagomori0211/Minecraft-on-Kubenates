@@ -22,7 +22,7 @@ vms = {
     vmid   = 104
     desc   = "K3s Node for Minecraft Java Server"
     cores  = 16            # 16コア
-    memory = 16384         # 16GB = 16384MB
+    memory = 24576         # 24GiB
     ip     = "192.168.0.151"
     disk_size = "200G"
   }
