@@ -19,11 +19,10 @@ resource "proxmox_vm_qemu" "server_vms" {
   sockets     = 1                        # ソケットは1、コア数で調整
   memory      = each.value.memory
   
-  # CPUタイプ（hostにするとホストマシンの機能をフルに使えます）
-  cpu         = "host" 
 
   # ネットワーク設定
   network {
+    id     = 0
     model  = "virtio"
     bridge = "vmbr0"
   }

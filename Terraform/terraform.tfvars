@@ -13,7 +13,7 @@ vms = {
     desc   = "Prometheus, Grafana Monitoring Stack"
     cores  = 4
     memory = 4096          # 4GB = 4096MB
-    ip     = "192.168.0.200"
+    ip     = "192.168.0.150"
   },
 
   # 2台目: App機 (Javaマイクラ k3sクラスタ用)
@@ -22,7 +22,7 @@ vms = {
     desc   = "K3s Node for Minecraft Java Server"
     cores  = 16            # 16コア
     memory = 16384         # 16GB = 16384MB
-    ip     = "192.168.0.201"
+    ip     = "192.168.0.151"
   }
 }
 

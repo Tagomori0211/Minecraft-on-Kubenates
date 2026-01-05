@@ -33,8 +33,14 @@ variable "proxmox_user" {
   default     = "root@pam" 
 }
 
-variable "proxmox_password" {
-  description = "Proxmoxのパスワード (sensitive指定でログ出力を抑制)"
+variable "proxmox_api_token_id" {
+  description = "API Token ID (例: root@pam!terraform)"
   type        = string
-  sensitive   = true # 実行結果(ログ)にパスワードが表示されないようにする安全装置
+  sensitive   = true
+}
+
+variable "proxmox_api_token_secret" {
+  description = "API Token Secret (UUIDのような文字列)"
+  type        = string
+  sensitive   = true
 }
