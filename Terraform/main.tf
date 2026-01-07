@@ -7,6 +7,7 @@ resource "proxmox_vm_qemu" "server_vms" {
   vmid        = each.value.vmid
   description = each.value.desc
 
+
   # テンプレート設定
   clone      = "ubuntu-2404-cloud-init"
   full_clone = true
