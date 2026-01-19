@@ -1,70 +1,62 @@
-resource "proxmox_vm_qemu" "server_vms" {
-  for_each = var.vms
+# ============================================================
+# TAK Pipeline - GKE Autopilot Hybrid Infrastructure
+# ============================================================
+# Purpose: GKE Autopilotクラスターをエントランスとして構築
+# Cost Strategy: Spot Pod優先でコスト最適化
+# ============================================================
 
-  # 基本設定
-  name        = each.key
-  target_node = var.common_config.target_node
-  vmid        = each.value.vmid
-  description = each.value.desc
+terraform {
+  required_version = ">= 1.5.0"
 
-
-  # テンプレート設定
-  clone      = "ubuntu-2404-cloud-init"
-  full_clone = true
-
-  # リソース設定
-  cores   = each.value.cores
-  sockets = 1
-  memory  = each.value.memory
-
-  # ★ SCSIコントローラ（重要）
-  scsihw = "virtio-scsi-pci"
-
-  # ★ ディスク設定
-  disk {
-    slot    = "scsi0"
-    size    = each.value.disk_size  # 例: "32G"
-    storage = "local-lvm"
-    type    = "disk"
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 5.0"
+    }
   }
 
-  # ★ Cloud-Initドライブ
-  disk {
-    slot    = "ide2"
-    type    = "cloudinit"
-    storage = "local-lvm"
+  # State管理（本番運用時はGCSバックエンドを推奨）
+  # backend "gcs" {
+  #   bucket = "tak-pipeline-tfstate"
+  #   prefix = "hybrid/gke"
+  # }
+}
+
+# ============================================================
+# Provider Configuration
+# ============================================================
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
+provider "google-beta" {
+  project = var.project_id
+  region  = var.region
+}
+
+# ============================================================
+# Data Sources
+# ============================================================
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+# ============================================================
+# Local Values
+# ============================================================
+locals {
+  # 共通ラベル
+  common_labels = {
+    "app.kubernetes.io/part-of" = "tak-pipeline"
+    "environment"               = var.environment
+    "managed-by"                = "terraform"
   }
 
-  # ネットワーク設定
-  network {
-    id     = 0
-    model  = "virtio"
-    bridge = "vmbr0"
-  }
- #  シリアルコンソール設定
-  serial {
-    id   = 0
-    type = "socket"
-  }
-
-  #  VGA設定（シリアルコンソール使用）
-  vga {
-    type = "serial0"
-  }
-
-  # Cloud-Init設定
-  os_type   = "cloud-init"
-  ipconfig0 = "ip=${each.value.ip}/24,gw=${var.common_config.gateway}"
-  ciuser    = "shinari"
-  sshkeys    = var.ssh_public_key
-
-  # ★ qemu-guest-agent有効化
-  agent = 1
-
-  # 起動待機（Cloud-Init完了まで）
-  lifecycle {
-    ignore_changes = [
-      disk,  # ディスクリサイズ後の差分を無視
-    ]
-  }
+  # Tailscale UDP port
+  tailscale_port = 41641
 }

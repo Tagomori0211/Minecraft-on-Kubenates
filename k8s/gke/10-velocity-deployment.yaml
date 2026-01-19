@@ -1,0 +1,210 @@
+# ============================================================
+# TAK Pipeline - Velocity Proxy Deployment
+# ============================================================
+# Velocity Proxy + Tailscale Sidecar
+# 
+# アーキテクチャ:
+#   [Internet] -> [LoadBalancer:25565] -> [Velocity:25577]
+#                                              |
+#                                              +-> [Lobby:25566] (GKE内)
+#                                              |
+#                                              +-> [Tailscale] -> [OnPrem]
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velocity
+  namespace: minecraft
+  labels:
+    app: velocity
+    app.kubernetes.io/component: proxy
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: velocity
+  template:
+    metadata:
+      labels:
+        app: velocity
+        app.kubernetes.io/component: proxy
+    spec:
+      # ============================================================
+      # Spot Pod設定（コスト削減）
+      # ============================================================
+      # GKE AutopilotでSpot Podを使用
+      # 注意: Spotは中断される可能性があるため、ステートレス設計必須
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
+      
+      tolerations:
+        - key: "cloud.google.com/gke-spot"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+
+      # Graceful shutdown用
+      terminationGracePeriodSeconds: 30
+
+      # ============================================================
+      # Init Container: forwarding.secret生成
+      # ============================================================
+      initContainers:
+        - name: init-forwarding-secret
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "[init] Writing forwarding.secret..."
+              echo -n "${VELOCITY_SECRET}" > /velocity-data/forwarding.secret
+              chmod 600 /velocity-data/forwarding.secret
+              echo "[init] Done."
+          env:
+            - name: VELOCITY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: velocity-secret
+                  key: velocity-forwarding-secret
+          volumeMounts:
+            - name: velocity-data
+              mountPath: /velocity-data
+
+      # ============================================================
+      # Containers
+      # ============================================================
+      containers:
+        # ------------------------------------------------------------
+        # Velocity Proxy
+        # ------------------------------------------------------------
+        - name: velocity
+          image: itzg/bungeecord:latest
+          # Velocityを使用
+          env:
+            - { name: TYPE, value: "VELOCITY" }
+            - { name: VELOCITY_VERSION, value: "3.4.0-SNAPSHOT" }
+            # メモリ設定
+            - { name: MEMORY, value: "512M" }
+            - { name: INIT_MEMORY, value: "512M" }
+            - { name: MAX_MEMORY, value: "512M" }
+            # JVM最適化
+            - name: JVM_XX_OPTS
+              value: >-
+                -XX:+UseG1GC
+                -XX:G1HeapRegionSize=4M
+                -XX:+UnlockExperimentalVMOptions
+                -XX:+ParallelRefProcEnabled
+                -XX:+AlwaysPreTouch
+          ports:
+            - containerPort: 25577
+              name: minecraft
+              protocol: TCP
+          volumeMounts:
+            # 設定ファイル
+            - name: velocity-config
+              mountPath: /server/velocity.toml
+              subPath: velocity.toml
+            # forwarding.secret（initContainerで生成）
+            - name: velocity-data
+              mountPath: /server/forwarding.secret
+              subPath: forwarding.secret
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "768Mi"
+              cpu: "1000m"
+          # ヘルスチェック
+          startupProbe:
+            tcpSocket:
+              port: 25577
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            tcpSocket:
+              port: 25577
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 25577
+            periodSeconds: 10
+            failureThreshold: 3
+
+        # ------------------------------------------------------------
+        # Tailscale Sidecar
+        # ------------------------------------------------------------
+        # オンプレミスへのVPN接続を確立
+        - name: tailscale
+          image: tailscale/tailscale:latest
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
+          env:
+            # 認証キー
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            # ステート保存先
+            - name: TS_STATE_DIR
+              value: "/var/lib/tailscale"
+            # ユーザースペースモード（Autopilotではカーネルモード不可）
+            - name: TS_USERSPACE
+              value: "true"
+            # ソケット有効化（デバッグ用）
+            - name: TS_SOCKET
+              value: "/var/run/tailscale/tailscaled.sock"
+            # ホスト名
+            - name: TS_HOSTNAME
+              value: "tak-velocity-gke"
+            # 追加引数
+            - name: TS_EXTRA_ARGS
+              value: "--accept-routes"
+            # ログレベル
+            - name: TS_DEBUG_FIREWALL_MODE
+              value: "nftables"
+          volumeMounts:
+            - name: tailscale-state
+              mountPath: /var/lib/tailscale
+            - name: tailscale-socket
+              mountPath: /var/run/tailscale
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          # Tailscaleの起動確認
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "tailscale status --json | grep -q '\"BackendState\":\"Running\"'"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+
+      # ============================================================
+      # Volumes
+      # ============================================================
+      volumes:
+        # Velocity設定
+        - name: velocity-config
+          configMap:
+            name: velocity-config
+        # forwarding.secret用（initContainerで書き込み）
+        - name: velocity-data
+          emptyDir: {}
+        # Tailscaleステート（Pod再起動時も維持したい場合はPVCに変更）
+        - name: tailscale-state
+          emptyDir: {}
+        # Tailscaleソケット
+        - name: tailscale-socket
+          emptyDir: {}

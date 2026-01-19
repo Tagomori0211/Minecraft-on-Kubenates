@@ -1,0 +1,146 @@
+# ============================================================
+# TAK Pipeline - Velocity Proxy Configuration
+# ============================================================
+# Velocity設定ファイル
+# バックエンドサーバーへの転送ルールを定義
+# ============================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: velocity-config
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: velocity
+    app.kubernetes.io/part-of: tak-pipeline
+data:
+  # ============================================================
+  # velocity.toml - メイン設定
+  # ============================================================
+  velocity.toml: |
+    # ============================================================
+    # TAK Pipeline - Velocity Proxy Configuration
+    # ============================================================
+    # Architecture:
+    #   [Player] -> [Velocity@GKE] -> [Lobby@GKE / Backend@OnPrem]
+    # ============================================================
+
+    # バインド設定
+    bind = "0.0.0.0:25577"
+
+    # MOTD（サーバーリストに表示）
+    motd = "<gradient:#ff6b6b:#4ecdc4>TAK Pipeline</gradient> <gray>|</gray> <white>Hybrid Cloud</white>"
+
+    # 最大プレイヤー数
+    show-max-players = 100
+
+    # オンラインモード（Mojang認証）
+    online-mode = true
+
+    # 転送モード（modern = Velocity native forwarding）
+    player-info-forwarding-mode = "modern"
+
+    # ============================================================
+    # サーバー定義
+    # ============================================================
+    [servers]
+    # --- GKE内サーバー (localhost) ---
+    # Lobbyは同一Pod or 同一クラスター内
+    lobby = "127.0.0.1:25566"
+
+    # --- オンプレミスサーバー (Tailscale経由) ---
+    # NOTE: 以下のIPはTailscale接続後に確認して更新すること
+    # 確認方法: tailscale status で表示されるIP、または
+    #           オンプレ側の kubectl get svc -n minecraft
+    
+    # Survivalサーバー (k3s Service IP or Tailscale IP)
+    # 例: Tailscale subnet-router経由でk3s Service IPにアクセス
+    survival = "100.64.0.1:25565"  # TODO: 実際のTailscale IPに置換
+
+    # Industryサーバー (NeoForge)
+    industry = "100.64.0.2:25565"  # TODO: 実際のTailscale IPに置換
+
+    # ============================================================
+    # 接続順序（フォールバック）
+    # ============================================================
+    # プレイヤーが最初に接続するサーバー
+    try = ["lobby"]
+
+    # ============================================================
+    # 強制ホスト（ドメイン別振り分け）
+    # ============================================================
+    [forced-hosts]
+    # 例: survival.example.com で接続すると直接Survivalへ
+    # "survival.tak.example.com" = ["survival"]
+    # "industry.tak.example.com" = ["industry"]
+
+    # ============================================================
+    # 詳細設定
+    # ============================================================
+    [advanced]
+    # 圧縮閾値（-1で無効、256が一般的）
+    compression-threshold = 256
+    compression-level = -1
+
+    # ネットワーク圧縮
+    network-compression-threshold = 256
+
+    # 接続タイムアウト
+    connection-timeout = 5000
+    read-timeout = 30000
+
+    # ログレベル
+    log-command-executions = false
+    log-player-connections = true
+
+    # BungeeCordプラグイン互換
+    bungee-plugin-message-channel = true
+
+    # Forgeサポート（NeoForge用）
+    announce-forge = true
+
+    # TCPファストオープン
+    tcp-fast-open = true
+
+    # HAProxy PROXY protocol（LoadBalancer経由の場合）
+    haproxy-protocol = false
+
+    # ============================================================
+    # クエリ設定（サーバーリスト用）
+    # ============================================================
+    [query]
+    enabled = false
+    port = 25577
+
+  # ============================================================
+  # forwarding.secret - 転送シークレット
+  # ============================================================
+  # NOTE: このファイルはinitContainerでSecretから生成される
+  # ここでは空のプレースホルダーを定義
+
+---
+# ============================================================
+# Paper側設定テンプレート（参考用）
+# ============================================================
+# オンプレミス側のPaperサーバーに適用する設定
+# 既存のpaper-velocity-config ConfigMapと同期させること
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: paper-velocity-config-reference
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/part-of: tak-pipeline
+    purpose: reference-only
+data:
+  # この設定はオンプレミス側で使用
+  # GKE側には適用しない（参考情報として同梱）
+  paper-global.yml.example: |
+    # Paper側のVelocity連携設定
+    # オンプレミスの各Paperサーバーに適用
+    proxies:
+      velocity:
+        enabled: true
+        online-mode: true
+        # velocity-secretと同じ値を設定
+        secret: "YOUR_VELOCITY_SECRET_HERE"

@@ -1,0 +1,10 @@
+# ============================================================
+# TAK Pipeline - GKE Namespace
+# ============================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minecraft
+  labels:
+    app.kubernetes.io/part-of: tak-pipeline
+    environment: gke-entrance

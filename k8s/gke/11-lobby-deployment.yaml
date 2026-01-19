@@ -1,0 +1,173 @@
+# ============================================================
+# TAK Pipeline - Lobby Server Deployment (GKE)
+# ============================================================
+# 軽量なロビーサーバー
+# - Spot Podで低コスト運用
+# - ステートレス設計（PVC不要）
+# - プレイヤーの一時待機所
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lobby
+  namespace: minecraft
+  labels:
+    app: mc-lobby
+    app.kubernetes.io/component: lobby
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mc-lobby
+  template:
+    metadata:
+      labels:
+        app: mc-lobby
+        app.kubernetes.io/component: lobby
+      annotations:
+        # Prometheus監視（GKE Managed Prometheusと連携）
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      # ============================================================
+      # Spot Pod設定（コスト最優先）
+      # ============================================================
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
+      
+      tolerations:
+        - key: "cloud.google.com/gke-spot"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+
+      # Spot中断時のGraceful shutdown
+      terminationGracePeriodSeconds: 30
+
+      # ============================================================
+      # Init Container: Velocity Secret注入
+      # ============================================================
+      initContainers:
+        - name: inject-velocity-config
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "[init] Creating config directory..."
+              mkdir -p /data/config
+              echo "[init] Writing paper-global.yml with Velocity secret..."
+              cat > /data/config/paper-global.yml << EOF
+              proxies:
+                velocity:
+                  enabled: true
+                  online-mode: true
+                  secret: "${VELOCITY_SECRET}"
+              EOF
+              echo "[init] Done."
+          env:
+            - name: VELOCITY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: velocity-secret
+                  key: velocity-forwarding-secret
+          volumeMounts:
+            - name: lobby-data
+              mountPath: /data
+
+      # ============================================================
+      # Containers
+      # ============================================================
+      containers:
+        # ------------------------------------------------------------
+        # Minecraft Lobby Server
+        # ------------------------------------------------------------
+        - name: minecraft
+          image: itzg/minecraft-server:latest
+          env:
+            - { name: EULA, value: "TRUE" }
+            - { name: TYPE, value: "PAPER" }
+            - { name: VERSION, value: "1.21.4" }
+            # 軽量設定（ロビー用）
+            - { name: MEMORY, value: "1G" }
+            # Velocityプロキシ経由のためOFFLINE
+            - { name: ONLINE_MODE, value: "FALSE" }
+            # クエリ有効（監視用）
+            - { name: ENABLE_QUERY, value: "true" }
+            # ロビー固有設定
+            - { name: DIFFICULTY, value: "peaceful" }
+            - { name: GAMEMODE, value: "adventure" }
+            - { name: SPAWN_PROTECTION, value: "0" }
+            - { name: MAX_PLAYERS, value: "100" }
+            # ポート（Velocityと区別）
+            - { name: SERVER_PORT, value: "25566" }
+            # JVM最適化（軽量）
+            - name: JVM_XX_OPTS
+              value: >-
+                -XX:+UseG1GC
+                -XX:+ParallelRefProcEnabled
+                -XX:MaxGCPauseMillis=200
+                -Daikars.new.flags=true
+          ports:
+            - containerPort: 25566
+              name: minecraft
+          volumeMounts:
+            - name: lobby-data
+              mountPath: /data
+          resources:
+            # Autopilot最小リソース考慮
+            requests:
+              memory: "1Gi"
+              cpu: "250m"
+            limits:
+              memory: "1.5Gi"
+              cpu: "1000m"
+          # ヘルスチェック
+          startupProbe:
+            tcpSocket:
+              port: 25566
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            tcpSocket:
+              port: 25566
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["mc-health"]
+            initialDelaySeconds: 60
+            periodSeconds: 10
+
+        # ------------------------------------------------------------
+        # mc-monitor (メトリクス収集)
+        # ------------------------------------------------------------
+        - name: mc-monitor
+          image: itzg/mc-monitor:latest
+          args: ["export-for-prometheus"]
+          env:
+            - { name: EXPORT_SERVERS, value: "localhost:25566" }
+            - { name: DEBUG, value: "false" }
+          ports:
+            - containerPort: 8080
+              name: metrics
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+
+      # ============================================================
+      # Volumes
+      # ============================================================
+      # ロビーはステートレスなのでemptyDir使用
+      # ワールドデータは揮発性（必要ならPVCに変更）
+      volumes:
+        - name: lobby-data
+          emptyDir:
+            sizeLimit: 2Gi

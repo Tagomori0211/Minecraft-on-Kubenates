@@ -1,0 +1,371 @@
+# ============================================================
+# TAK Pipeline - Backend Servers (On-Premises k3s)
+# ============================================================
+# ハイブリッド構成でのオンプレミス側サーバー
+# 
+# 変更点:
+#   - Velocityはオンプレから削除（GKEに移動）
+#   - Lobbyはオンプレから削除（GKEに移動）
+#   - Survival/IndustryはGKEからTailscale経由でアクセス
+# ============================================================
+
+# === ConfigMap: Paper-Velocity設定 ===
+# GKEのVelocityと同じSecretを使用すること
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: paper-velocity-config
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/part-of: tak-pipeline
+data:
+  paper-global.yml.template: |
+    proxies:
+      velocity:
+        enabled: true
+        online-mode: true
+        secret: "__VELOCITY_SECRET__"
+
+---
+# ============================================================
+# 1. サバイバルサーバー (4GB)
+# ============================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-survival
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: survival
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-survival
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: survival
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mc-survival
+  template:
+    metadata:
+      labels:
+        app: mc-survival
+        app.kubernetes.io/component: survival
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      initContainers:
+        - name: inject-velocity-secret
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "[init] Creating config directory..."
+              mkdir -p /data/config
+              echo "[init] Injecting Velocity secret..."
+              sed "s/__VELOCITY_SECRET__/${VELOCITY_SECRET}/g" \
+                /template/paper-global.yml.template > /data/config/paper-global.yml
+              echo "[init] Done."
+          env:
+            - name: VELOCITY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: velocity-secret
+                  key: velocity-forwarding-secret
+          volumeMounts:
+            - name: velocity-template
+              mountPath: /template
+              readOnly: true
+            - name: data
+              mountPath: /data
+      containers:
+        - name: minecraft
+          image: itzg/minecraft-server:latest
+          env:
+            - { name: EULA, value: "TRUE" }
+            - { name: TYPE, value: "PAPER" }
+            - { name: VERSION, value: "1.21.4" }
+            - { name: MEMORY, value: "4G" }
+            - { name: ONLINE_MODE, value: "FALSE" }
+            - { name: ENABLE_QUERY, value: "true" }
+            - { name: JVM_XX_OPTS, value: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=8M" }
+          ports:
+            - containerPort: 25565
+              name: minecraft
+          volumeMounts:
+            - mountPath: /data
+              name: data
+          resources:
+            requests: { memory: "4Gi", cpu: "1000m" }
+            limits: { memory: "4.5Gi", cpu: "3000m" }
+          startupProbe:
+            tcpSocket:
+              port: 25565
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            tcpSocket:
+              port: 25565
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["mc-health"]
+            initialDelaySeconds: 60
+            periodSeconds: 10
+        - name: mc-monitor
+          image: itzg/mc-monitor:latest
+          args: ["export-for-prometheus"]
+          env:
+            - { name: EXPORT_SERVERS, value: "localhost:25565" }
+          ports:
+            - containerPort: 8080
+              name: metrics
+          resources:
+            requests: { memory: "32Mi", cpu: "10m" }
+            limits: { memory: "64Mi", cpu: "100m" }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pvc-survival
+        - name: velocity-template
+          configMap:
+            name: paper-velocity-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-survival
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: survival
+spec:
+  selector:
+    app: mc-survival
+  ports:
+    - port: 25565
+      name: minecraft
+    - port: 8080
+      name: metrics
+  type: ClusterIP
+
+---
+# ============================================================
+# 2. 工業サーバー (8GB) - NeoForge
+# ============================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-industry
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: industry
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 30Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-industry
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: industry
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mc-industry
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mc-industry
+        app.kubernetes.io/component: industry
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: minecraft
+          image: itzg/minecraft-server:latest
+          env:
+            - { name: EULA, value: "TRUE" }
+            - { name: TYPE, value: "NEOFORGE" }
+            - { name: VERSION, value: "1.20.4" }
+            - { name: NEOFORGE_VERSION, value: "20.4.237" }
+            - { name: MEMORY, value: "8G" }
+            - { name: ONLINE_MODE, value: "FALSE" }
+            - { name: ENABLE_QUERY, value: "true" }
+            - { name: MAX_TICK_TIME, value: "120000" }
+            - { name: VIEW_DISTANCE, value: "8" }
+            - { name: SIMULATION_DISTANCE, value: "6" }
+            - name: JVM_XX_OPTS
+              value: >-
+                -XX:+UseG1GC
+                -XX:+ParallelRefProcEnabled
+                -XX:MaxGCPauseMillis=200
+                -XX:+UnlockExperimentalVMOptions
+                -XX:+DisableExplicitGC
+                -XX:G1NewSizePercent=30
+                -XX:G1MaxNewSizePercent=40
+                -XX:G1HeapRegionSize=16M
+                -XX:G1ReservePercent=20
+                -XX:G1MixedGCCountTarget=4
+                -XX:InitiatingHeapOccupancyPercent=15
+                -XX:G1MixedGCLiveThresholdPercent=90
+                -XX:G1RSetUpdatingPauseTimePercent=5
+                -XX:SurvivorRatio=32
+                -XX:+PerfDisableSharedMem
+                -XX:MaxTenuringThreshold=1
+          ports:
+            - containerPort: 25565
+              name: minecraft
+          volumeMounts:
+            - mountPath: /data
+              name: data
+          resources:
+            requests: { memory: "8Gi", cpu: "2000m" }
+            limits: { memory: "10Gi", cpu: "4000m" }
+          startupProbe:
+            tcpSocket:
+              port: 25565
+            initialDelaySeconds: 120
+            periodSeconds: 15
+            failureThreshold: 40
+          livenessProbe:
+            tcpSocket:
+              port: 25565
+            periodSeconds: 60
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["mc-health"]
+            initialDelaySeconds: 180
+            periodSeconds: 15
+        - name: mc-monitor
+          image: itzg/mc-monitor:latest
+          args: ["export-for-prometheus"]
+          env:
+            - { name: EXPORT_SERVERS, value: "localhost:25565" }
+          ports:
+            - containerPort: 8080
+              name: metrics
+          resources:
+            requests: { memory: "32Mi", cpu: "10m" }
+            limits: { memory: "64Mi", cpu: "100m" }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pvc-industry
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-industry
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: industry
+spec:
+  selector:
+    app: mc-industry
+  ports:
+    - port: 25565
+      name: minecraft
+    - port: 8080
+      name: metrics
+  type: ClusterIP
+
+---
+# ============================================================
+# Tailscale Subnet Router (オンプレ側)
+# ============================================================
+# GKEからオンプレのService IPにアクセスするためのルーター
+# 既存のsubnet-routerがあれば、そちらを利用
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tailscale-subnet-router
+  namespace: minecraft
+  labels:
+    app: tailscale-router
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tailscale-router
+  template:
+    metadata:
+      labels:
+        app: tailscale-router
+    spec:
+      # 特権コンテナが必要
+      containers:
+        - name: tailscale
+          image: tailscale/tailscale:latest
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
+            privileged: true
+          env:
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_STATE_DIR
+              value: "/var/lib/tailscale"
+            - name: TS_HOSTNAME
+              value: "tak-onprem-router"
+            # サブネットルーター設定（k3s Service CIDR）
+            - name: TS_ROUTES
+              value: "10.43.0.0/16"
+            - name: TS_EXTRA_ARGS
+              value: "--advertise-routes=10.43.0.0/16 --accept-dns=false"
+          volumeMounts:
+            - name: tailscale-state
+              mountPath: /var/lib/tailscale
+            - name: dev-net-tun
+              mountPath: /dev/net/tun
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+      volumes:
+        - name: tailscale-state
+          emptyDir: {}
+        - name: dev-net-tun
+          hostPath:
+            path: /dev/net/tun
+            type: CharDevice

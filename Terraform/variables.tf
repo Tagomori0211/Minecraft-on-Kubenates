@@ -1,52 +1,89 @@
-# 共通で使用する設定値
-variable "common_config" {
-  description = "全VMで共通の設定 (ゲートウェイ、テンプレートIDなど)"
-  type = object({
-    gateway     = string
-    template_id = number
-    target_node = string
-  })
+# ============================================================
+# Variables
+# ============================================================
+
+variable "project_id" {
+  description = "GCP Project ID"
+  type        = string
+  # 実際のプロジェクトIDに置き換える
+  # default = "tak-pipeline-prod"
 }
 
-# 各VMごとの設定値（Map形式）
-# キー（名前）に対して、スペックのセットを定義します
-variable "vms" {
-  description = "作成するVMのスペックリスト"
-  type = map(object({
-    vmid   = number # Proxmox上のID (103, 104)
-    desc   = string # VMの説明メモ
-    cores  = number # CPUコア数
-    memory = number # メモリ容量(MB)
-    ip     = string # 固定IPアドレス
-    disk_size = string  # ★  "32G", "64G" など
-  }))
+variable "region" {
+  description = "GCP Region for GKE cluster"
+  type        = string
+  default     = "asia-northeast1" # 東京リージョン
 }
 
-variable "ssh_public_key" {
-  description = "SSH公開鍵"
+variable "environment" {
+  description = "Environment name (dev/staging/prod)"
+  type        = string
+  default     = "prod"
+}
+
+# ============================================================
+# Network Variables
+# ============================================================
+variable "vpc_name" {
+  description = "VPC network name"
+  type        = string
+  default     = "tak-vpc"
+}
+
+variable "subnet_cidr" {
+  description = "Subnet CIDR for GKE nodes"
+  type        = string
+  default     = "10.100.0.0/20" # 4096 IPs
+}
+
+variable "pod_cidr" {
+  description = "Secondary CIDR for Pods"
+  type        = string
+  default     = "10.101.0.0/16" # 65536 Pod IPs
+}
+
+variable "service_cidr" {
+  description = "Secondary CIDR for Services"
+  type        = string
+  default     = "10.102.0.0/20" # 4096 Service IPs
+}
+
+# ============================================================
+# GKE Cluster Variables
+# ============================================================
+variable "cluster_name" {
+  description = "GKE Autopilot cluster name"
+  type        = string
+  default     = "tak-entrance"
+}
+
+variable "release_channel" {
+  description = "GKE release channel (RAPID/REGULAR/STABLE)"
+  type        = string
+  default     = "REGULAR"
+}
+
+# ============================================================
+# Tailscale Variables
+# ============================================================
+variable "tailscale_auth_key" {
+  description = "Tailscale Auth Key (reusable, ephemeral recommended)"
   type        = string
   sensitive   = true
+  default     = "" # CI/CD or terraform.tfvars で設定
 }
 
-variable "proxmox_api_url" {
-  description = "Proxmox APIのURL (例: https://192.168.0.30:8006/api2/json)"
+variable "onprem_tailscale_subnet" {
+  description = "On-premises subnet advertised via Tailscale"
   type        = string
+  default     = "10.43.0.0/16" # k3s Service CIDR (要確認)
 }
 
-variable "proxmox_user" {
-  description = "Proxmoxのユーザー名 (root@pam)"
-  type        = string
-  default     = "root@pam" 
-}
-
-variable "proxmox_api_token_id" {
-  description = "API Token ID (例: root@pam!terraform)"
-  type        = string
-  sensitive   = true
-}
-
-variable "proxmox_api_token_secret" {
-  description = "API Token Secret (UUIDのような文字列)"
-  type        = string
-  sensitive   = true
+# ============================================================
+# Cost Optimization
+# ============================================================
+variable "enable_spot_only" {
+  description = "Force all workloads to use Spot Pods"
+  type        = bool
+  default     = true
 }

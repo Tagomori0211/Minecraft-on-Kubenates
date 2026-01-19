@@ -219,3 +219,7 @@ crash.log
 # Specific to some terraform workflows
 # .terraform-version
 # .vscode/
+
+#k3s secret
+secret.yaml
+*-secret.yaml
