@@ -338,7 +338,6 @@ kubectl logs -f deploy/deploy-survival -c minecraft
 - [ ] **Argo CD** によるGitOps化
 - [ ] **External Secrets Operator** によるSecret管理の外部化
 - [ ] **Grafana Dashboard** のテンプレート化
-- [ ] **Horizontal Pod Autoscaler** によるロビーの自動スケール
 - [ ] **Disaster Recovery** 手順の文書化
 
 ---
@@ -351,7 +350,7 @@ MIT License - 詳細は [LICENSE](LICENSE) を参照
 
 ## 👤 Author
 
-**田籠 (Tagomori)**
+**HN:田籠 (Tagomori)**
 
 - GitHub: [@tagomori1102](https://github.com/tagomori1102)
 - Portfolio: インフラエンジニア / SRE志望
