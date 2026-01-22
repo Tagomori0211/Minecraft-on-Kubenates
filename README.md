@@ -15,6 +15,19 @@
 
 Infrastructure as Code（IaC）を全面採用し、**Terraform / Ansible / Kubernetes マニフェスト**による完全な構成管理を実現しています。
 
+## 【独自定義】TAKパイプライン
+```mermaid
+flowchart LR
+    T["Terraform</br>Provisioning"]
+    A["Ansible</br>Configuration"]
+    K["Kubernetes</br>Orchestration"]
+
+    T --> A --> K
+
+    style T fill:#7B42BC,stroke:#5C2D91,color:#fff
+    style A fill:#EE0000,stroke:#CC0000,color:#fff
+    style K fill:#326CE5,stroke:#2457B2,color:#fff
+```
 ### 🎯 設計思想
 
 | 観点 | アプローチ |
