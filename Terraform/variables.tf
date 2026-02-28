@@ -54,7 +54,7 @@ variable "service_cidr" {
 variable "cluster_name" {
   description = "GKE Autopilot cluster name"
   type        = string
-  default     = "tak-entrance"
+  default     = "tagomori-minecraft"
 }
 
 variable "release_channel" {

@@ -216,8 +216,8 @@ resource "google_compute_router_nat" "tak_nat" {
 # ============================================================
 # 固定IPが必要な場合に使用（DNS設定用）
 
-resource "google_compute_global_address" "minecraft_ip" {
-  name         = "tak-minecraft-ip"
-  address_type = "EXTERNAL"
-  description  = "Static IP for Minecraft Velocity Proxy"
+resource "google_compute_address" "minecraft_ip" {
+  name        = "tagomori-minecraft-ip"
+  region      = var.region
+  description = "Static IP for Minecraft Velocity Proxy"
 }

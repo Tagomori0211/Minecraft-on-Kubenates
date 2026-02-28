@@ -1,0 +1,267 @@
+# ============================================================
+# TAK Pipeline - Monitoring Stack (GKE Autopilot)
+# ============================================================
+# Prometheus: Tailscale sidecar経由でオンプレ含む全対象を監視
+# Grafana:    管理者専用 - Tailscale接続経由でのみアクセス可能
+# ============================================================
+# 参照: infrastructure.mermaid
+#   Prometheus --> Velocity, Lobby, Survival, Mod, Bedrock, Nginx_Sakura, Kotlin_API
+#   Grafana --> (管理者がTailscale接続してアクセス)
+# ============================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/part-of: tak-pipeline
+
+---
+# ============================================================
+# Prometheus ConfigMap
+# ============================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-server-conf
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: tak-pipeline
+data:
+  prometheus.yml: |-
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      # ── GKE内サーバー ──────────────────────────────────────
+      - job_name: 'velocity'
+        static_configs:
+          - targets: ['velocity.minecraft.svc.cluster.local:8080']
+            labels:
+              location: gke
+              component: proxy
+
+      - job_name: 'lobby'
+        static_configs:
+          - targets: ['lobby.minecraft.svc.cluster.local:8080']
+            labels:
+              location: gke
+              component: lobby
+
+      # ── オンプレミス (Tailscale経由) ───────────────────────
+      # NOTE: 以下のIPはTailscaleネットワークIPに置換すること
+      # 確認方法: tailscale status (オンプレ側のMinecraftServerノードIP)
+
+      - job_name: 'survival'
+        static_configs:
+          - targets: ['100.64.0.10:8080']  # TODO: MinecraftServer Tailscale IP
+            labels:
+              location: onprem
+              component: survival
+
+      - job_name: 'mod'
+        static_configs:
+          - targets: ['100.64.0.10:8081']  # TODO: MinecraftServer Tailscale IP
+            labels:
+              location: onprem
+              component: mod
+
+      - job_name: 'bedrock'
+        static_configs:
+          - targets: ['100.64.0.10:19132']  # TODO: MinecraftServer Tailscale IP
+            labels:
+              location: onprem
+              component: bedrock
+
+      # ── Kotlin API (AppServer) ─────────────────────────────
+      - job_name: 'kotlin_api'
+        static_configs:
+          - targets: ['100.64.0.11:8080']  # TODO: AppServer Tailscale IP
+            labels:
+              location: onprem
+              component: kotlin-api
+
+      # ── さくらVPS Nginx ────────────────────────────────────
+      # nginx-prometheus-exporter が必要 (nginx stub_status)
+      - job_name: 'nginx_sakura'
+        static_configs:
+          - targets: ['100.64.0.20:9113']  # TODO: さくらVPS Tailscale IP
+            labels:
+              location: sakura-vps
+              component: nginx-proxy
+
+---
+# ============================================================
+# Prometheus Deployment
+# ============================================================
+# 通常Pod（Spot Pod対象外 - メトリクスは継続収集が必要）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus
+    spec:
+      securityContext:
+        fsGroup: 65534
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=30d"
+          ports:
+            - containerPort: 9090
+              name: prometheus
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus/
+            - name: prometheus-storage
+              mountPath: /prometheus/
+          resources:
+            requests: { memory: "512Mi", cpu: "250m" }
+            limits: { memory: "1Gi", cpu: "1000m" }
+
+        # Tailscale Sidecar: オンプレ監視ターゲットへのVPN接続
+        - name: tailscale
+          image: tailscale/tailscale:latest
+          env:
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_USERSPACE
+              value: "true"
+            - name: TS_HOSTNAME
+              value: "tak-prometheus-gke"
+            - name: TS_EXTRA_ARGS
+              value: "--accept-routes"
+          resources:
+            requests: { memory: "64Mi", cpu: "50m" }
+            limits: { memory: "128Mi", cpu: "200m" }
+
+      volumes:
+        - name: prometheus-config
+          configMap:
+            defaultMode: 420
+            name: prometheus-server-conf
+        - name: prometheus-storage
+          emptyDir: {}
+
+---
+# ============================================================
+# Prometheus Service
+# ============================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+spec:
+  selector:
+    app.kubernetes.io/name: prometheus
+  type: ClusterIP
+  ports:
+    - port: 9090
+      targetPort: 9090
+      name: prometheus
+
+---
+# ============================================================
+# Grafana Deployment
+# ============================================================
+# 通常Pod（管理者専用）
+# アクセス方法: Tailscale接続後に tak-grafana-gke の Tailscale IP へアクセス
+# Admin --> Tailscale接続 --> Grafana (参照: infrastructure.mermaid)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          ports:
+            - containerPort: 3000
+              name: grafana
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin-secret
+                  key: admin-password
+                  optional: true  # Secretがない場合はデフォルト(admin)を使用
+            - name: GF_SERVER_ROOT_URL
+              value: "http://tak-grafana-gke"
+          resources:
+            requests: { memory: "256Mi", cpu: "100m" }
+            limits: { memory: "512Mi", cpu: "500m" }
+
+        # Tailscale Sidecar: 管理者がTailscale経由でGrafanaにアクセス
+        - name: tailscale
+          image: tailscale/tailscale:latest
+          env:
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_USERSPACE
+              value: "true"
+            - name: TS_HOSTNAME
+              value: "tak-grafana-gke"
+            - name: TS_SERVE_CONFIG
+              value: '{"TCP":{"3000":{"HTTPS":false}},"Web":{"${TS_CERT_DOMAIN}:3000":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:3000"}}}}}'
+          resources:
+            requests: { memory: "64Mi", cpu: "50m" }
+            limits: { memory: "128Mi", cpu: "200m" }
+
+---
+# ============================================================
+# Grafana Service (ClusterIP - 外部公開しない)
+# ============================================================
+# 管理者はTailscale経由でのみアクセス可能
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana
+spec:
+  selector:
+    app.kubernetes.io/name: grafana
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: grafana

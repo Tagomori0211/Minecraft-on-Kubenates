@@ -2,7 +2,7 @@
 # TAK Pipeline - Backend Servers (On-Premises k3s)
 # ============================================================
 # ハイブリッド構成でのオンプレミス側サーバー
-# 
+#
 # 変更点:
 #   - Velocityはオンプレから削除（GKEに移動）
 #   - Lobbyはオンプレから削除（GKEに移動）
@@ -103,7 +103,10 @@ spec:
             - { name: MEMORY, value: "4G" }
             - { name: ONLINE_MODE, value: "FALSE" }
             - { name: ENABLE_QUERY, value: "true" }
-            - { name: JVM_XX_OPTS, value: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=8M" }
+            - {
+                name: JVM_XX_OPTS,
+                value: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=8M",
+              }
           ports:
             - containerPort: 25565
               name: minecraft
@@ -129,17 +132,6 @@ spec:
               command: ["mc-health"]
             initialDelaySeconds: 60
             periodSeconds: 10
-        - name: mc-monitor
-          image: itzg/mc-monitor:latest
-          args: ["export-for-prometheus"]
-          env:
-            - { name: EXPORT_SERVERS, value: "localhost:25565" }
-          ports:
-            - containerPort: 8080
-              name: metrics
-          resources:
-            requests: { memory: "32Mi", cpu: "10m" }
-            limits: { memory: "64Mi", cpu: "100m" }
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -168,15 +160,15 @@ spec:
 
 ---
 # ============================================================
-# 2. 工業サーバー (8GB) - NeoForge
+# 2. Java-Indicatory MOD サーバー (8GB) - NeoForge
 # ============================================================
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: pvc-industry
+  name: pvc-mod
   namespace: minecraft
   labels:
-    app.kubernetes.io/component: industry
+    app.kubernetes.io/component: mod
     app.kubernetes.io/part-of: tak-pipeline
 spec:
   accessModes: ["ReadWriteOnce"]
@@ -189,23 +181,23 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: deploy-industry
+  name: deploy-mod
   namespace: minecraft
   labels:
-    app.kubernetes.io/component: industry
+    app.kubernetes.io/component: mod
     app.kubernetes.io/part-of: tak-pipeline
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mc-industry
+      app: mc-mod
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app: mc-industry
-        app.kubernetes.io/component: industry
+        app: mc-mod
+        app.kubernetes.io/component: mod
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
@@ -269,38 +261,129 @@ spec:
               command: ["mc-health"]
             initialDelaySeconds: 180
             periodSeconds: 15
-        - name: mc-monitor
-          image: itzg/mc-monitor:latest
-          args: ["export-for-prometheus"]
-          env:
-            - { name: EXPORT_SERVERS, value: "localhost:25565" }
-          ports:
-            - containerPort: 8080
-              name: metrics
-          resources:
-            requests: { memory: "32Mi", cpu: "10m" }
-            limits: { memory: "64Mi", cpu: "100m" }
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: pvc-industry
+            claimName: pvc-mod
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: svc-industry
+  name: svc-mod
   namespace: minecraft
   labels:
-    app.kubernetes.io/component: industry
+    app.kubernetes.io/component: mod
 spec:
   selector:
-    app: mc-industry
+    app: mc-mod
   ports:
     - port: 25565
       name: minecraft
     - port: 8080
       name: metrics
+  type: ClusterIP
+
+---
+# ============================================================
+# 3. Bedrock Server (2GB)
+# ============================================================
+# さくらVPS Nginx → Tailscale → このBedrockサーバー
+# UDP 19132 で受信
+# ============================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-bedrock
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: bedrock
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-bedrock
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: bedrock
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mc-bedrock
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mc-bedrock
+        app.kubernetes.io/component: bedrock
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "19132"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: bedrock
+          image: itzg/minecraft-bedrock-server:latest
+          env:
+            - { name: EULA, value: "TRUE" }
+            - { name: GAMEMODE, value: "survival" }
+            - { name: DIFFICULTY, value: "normal" }
+            - { name: SERVER_NAME, value: "sushiski Bedrock" }
+            - { name: MAX_PLAYERS, value: "20" }
+            - { name: ALLOW_CHEATS, value: "false" }
+          ports:
+            - containerPort: 19132
+              name: bedrock
+              protocol: UDP
+          volumeMounts:
+            - mountPath: /data
+              name: data
+          resources:
+            requests: { memory: "2Gi", cpu: "500m" }
+            limits: { memory: "2.5Gi", cpu: "2000m" }
+          startupProbe:
+            exec:
+              command: ["bash", "-c", "mc-monitor status-bedrock --host 127.0.0.1 --port 19132 || exit 0"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command: ["bash", "-c", "mc-monitor status-bedrock --host 127.0.0.1 --port 19132 || exit 0"]
+            periodSeconds: 60
+            failureThreshold: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pvc-bedrock
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-bedrock
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: bedrock
+spec:
+  selector:
+    app: mc-bedrock
+  ports:
+    - port: 19132
+      name: bedrock
+      protocol: UDP
   type: ClusterIP
 
 ---

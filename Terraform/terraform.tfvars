@@ -16,20 +16,20 @@ common_config = {
 
 # VMリスト
 vms = {
-  # 1台目: DevOps機 (監視スタック用)
-  "devops-server" = {
+  # 1台目: オンプレ：AppServer (k3sノード / 将来拡張および監視・ルーターノード)
+  "AppServer" = {
     vmid   = 103
-    desc   = "Prometheus, Grafana Monitoring Stack"
+    desc   = "K3s Node for Main Services (Infrastructure/Router)"
     cores  = 4
-    memory = 4096          # 4GB = 4096MB
+    memory = 8192          # 8GB = 8192MB
     ip     = "192.168.0.150"
-    disk_size = "120G"
+    disk_size = "100G"
   },
 
-  # 2台目: App機 (Javaマイクラ k3sクラスタ用)
-  "app-minecraft" = {
+  # 2台目: オンプレ：MinecraftServer (k3sノード / Java/Bedrock マイクラゲームサーバー用)
+  "MinecraftServer" = {
     vmid   = 104
-    desc   = "K3s Node for Minecraft Java Server"
+    desc   = "K3s Node for Minecraft Game Servers (Survival, Mod, Bedrock)"
     cores  = 16            # 16コア
     memory = 24576         # 24GiB
     ip     = "192.168.0.151"

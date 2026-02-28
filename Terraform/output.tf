@@ -44,7 +44,7 @@ output "subnet_name" {
 # 静的IP
 output "minecraft_static_ip" {
   description = "Static IP for Minecraft LoadBalancer"
-  value       = google_compute_global_address.minecraft_ip.address
+  value       = google_compute_address.minecraft_ip.address
 }
 
 # Tailscale設定用情報

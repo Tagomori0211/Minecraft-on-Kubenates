@@ -56,8 +56,8 @@ data "google_project" "current" {
 locals {
   # 共通ラベル
   common_labels = {
-    "app.kubernetes.io/part-of" = "tak-pipeline"
-    "environment"               = var.environment
+    "app-part-of" = "tak-pipeline"
+    "environment" = var.environment
     "managed-by"                = "terraform"
   }
 

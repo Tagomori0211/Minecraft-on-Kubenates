@@ -57,8 +57,8 @@ data:
     # 例: Tailscale subnet-router経由でk3s Service IPにアクセス
     survival = "100.64.0.1:25565"  # TODO: 実際のTailscale IPに置換
 
-    # Industryサーバー (NeoForge)
-    industry = "100.64.0.2:25565"  # TODO: 実際のTailscale IPに置換
+    # Java-Indicatory MODサーバー (NeoForge)
+    mod = "100.64.0.2:25565"  # TODO: 実際のTailscale IPに置換
 
     # ============================================================
     # 接続順序（フォールバック）

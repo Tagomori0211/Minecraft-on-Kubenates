@@ -1,10 +1,18 @@
 ---
-- name: Deploy Minecraft Cluster
-  hosts: app
+# ============================================================
+# TAK Pipeline - Minecraft Cluster Deploy
+# ============================================================
+# infrastructure.mermaid に基づく構成:
+#   minecraft ホスト: Java-Survival, Java-Indicatory MOD, Bedrock Server
+#   app ホスト:       StatusPlatform (Kotlin API, Flutter Web, Envoy, CF Tunnel)
+# ============================================================
+
+# ── MinecraftServer ノード ────────────────────────────────────
+- name: Deploy Minecraft Game Servers (MinecraftServer node)
+  hosts: minecraft
   become: yes
 
   tasks:
-    # 1. 転送先のディレクトリを作る
     - name: Create manifests directory
       file:
         path: /home/shinari/k8s_manifests
@@ -12,15 +20,41 @@
         owner: shinari
         group: shinari
 
-    # 2. マニフェストフォルダごと転送する
-    - name: Copy kubernetes manifests
+    - name: Copy Minecraft server manifests
       copy:
-        src: k8s_manifests/
+        src: "{{ item }}"
         dest: /home/shinari/k8s_manifests/
         owner: shinari
         group: shinari
-        mode: '0644'
+        mode: "0644"
+      with_fileglob:
+        - ../k8s/onprem/backend-servers.yaml
 
-    # 3. 転送したマニフェストを一括適用する
-    - name: Apply all manifests
-      command: k3s kubectl apply -f /home/shinari/k8s_manifests/
+    - name: Apply Minecraft server manifests
+      command: k3s kubectl apply -f /home/shinari/k8s_manifests/backend-servers.yaml
+
+# ── AppServer ノード ─────────────────────────────────────────
+- name: Deploy StatusPlatform (AppServer node)
+  hosts: app
+  become: yes
+
+  tasks:
+    - name: Create manifests directory
+      file:
+        path: /home/shinari/k8s_manifests
+        state: directory
+        owner: shinari
+        group: shinari
+
+    - name: Copy StatusPlatform manifests
+      copy:
+        src: "{{ item }}"
+        dest: /home/shinari/k8s_manifests/
+        owner: shinari
+        group: shinari
+        mode: "0644"
+      with_fileglob:
+        - ../k8s/onprem/appserver.yaml
+
+    - name: Apply StatusPlatform manifests
+      command: k3s kubectl apply -f /home/shinari/k8s_manifests/appserver.yaml
