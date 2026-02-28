@@ -87,3 +87,50 @@ variable "enable_spot_only" {
   type        = bool
   default     = true
 }
+
+# ============================================================
+# Proxmox Variables（オンプレ VM管理）
+# ============================================================
+variable "proxmox_api_url" {
+  description = "Proxmox API URL (例: https://192.168.0.xxx:8006/api2/json)"
+  type        = string
+}
+
+variable "proxmox_api_token_id" {
+  description = "Proxmox API Token ID (書式: user@pam!tokenid)"
+  type        = string
+  sensitive   = true
+}
+
+variable "proxmox_api_token_secret" {
+  description = "Proxmox API Token Secret"
+  type        = string
+  sensitive   = true
+}
+
+variable "ssh_public_key" {
+  description = "VM接続用SSHパブリックキー"
+  type        = string
+}
+
+variable "vms" {
+  description = "Proxmox VM構成マップ"
+  type = map(object({
+    vmid      = number
+    desc      = string
+    cores     = number
+    memory    = number
+    ip        = string
+    disk_size = string
+  }))
+  default = {}
+}
+
+variable "common_config" {
+  description = "VM共通設定"
+  type = object({
+    gateway     = string
+    template_id = number
+    target_node = string
+  })
+}

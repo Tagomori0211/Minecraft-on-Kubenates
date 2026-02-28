@@ -17,6 +17,10 @@ terraform {
       source  = "hashicorp/google-beta"
       version = "~> 5.0"
     }
+    proxmox = {
+      source  = "telmate/proxmox"
+      version = "3.0.2-rc04"
+    }
   }
 
   # State管理（本番運用時はGCSバックエンドを推奨）

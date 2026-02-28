@@ -1,14 +1,3 @@
-terraform {
-  required_providers {
-    proxmox = {
-      # Proxmoxを操作するための公式ライクなプラグインを指定
-      source  = "telmate/proxmox"
-      # バージョンを指定
-      version = "3.0.2-rc04"
-    }
-  }
-}
-
 provider "proxmox" {
   pm_api_url = var.proxmox_api_url
   
