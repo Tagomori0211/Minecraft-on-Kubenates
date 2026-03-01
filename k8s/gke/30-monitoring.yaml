@@ -1,20 +1,17 @@
 # ============================================================
 # TAK Pipeline - Monitoring Stack (GKE Autopilot)
 # ============================================================
-# Prometheus: Tailscale sidecar経由でオンプレ含む全対象を監視
-# Grafana:    管理者専用 - Tailscale接続経由でのみアクセス可能
+# Prometheus : Tailscale sidecar 経由で全コンポーネントを監視
+# Grafana    : 管理者専用 / Tailscale 接続でのみアクセス可能
+#
+# 監視対象 (infrastructure.mermaid):
+#   GKE内   : Velocity(:8080), Lobby(:8080)
+#   オンプレ: Survival, Mod, Bedrock (Tailscale subnet-router 経由)
+#   Kotlin API (AppServer) / Nginx (さくらVPS)
+#
+# アクセス方法:
+#   Grafana → Admin が Tailscale 接続後 tak-grafana-gke:80 へアクセス
 # ============================================================
-# 参照: infrastructure.mermaid
-#   Prometheus --> Velocity, Lobby, Survival, Mod, Bedrock, Nginx_Sakura, Kotlin_API
-#   Grafana --> (管理者がTailscale接続してアクセス)
-# ============================================================
-
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: monitoring
-  labels:
-    app.kubernetes.io/part-of: tak-pipeline
 
 ---
 # ============================================================
@@ -34,68 +31,58 @@ data:
       evaluation_interval: 15s
 
     scrape_configs:
-      # ── GKE内サーバー ──────────────────────────────────────
+
+      # ── GKE 内（ClusterIP DNS で直接到達）──────────────────
       - job_name: 'velocity'
         static_configs:
           - targets: ['velocity.minecraft.svc.cluster.local:8080']
-            labels:
-              location: gke
-              component: proxy
+            labels: { location: gke, component: velocity }
 
       - job_name: 'lobby'
         static_configs:
           - targets: ['lobby.minecraft.svc.cluster.local:8080']
-            labels:
-              location: gke
-              component: lobby
+            labels: { location: gke, component: lobby }
 
-      # ── オンプレミス (Tailscale経由) ───────────────────────
-      # NOTE: 以下のIPはTailscaleネットワークIPに置換すること
-      # 確認方法: tailscale status (オンプレ側のMinecraftServerノードIP)
-
+      # ── オンプレミス MinecraftServer（Tailscale subnet-router 経由）
+      # subnet-router が 10.43.0.0/16 (k3s Service CIDR) を広告
+      # 設定方法: オンプレ側で `kubectl get svc -n minecraft` を実行し
+      #           ClusterIP を確認して以下の TODO を置換すること
       - job_name: 'survival'
         static_configs:
-          - targets: ['100.64.0.10:8080']  # TODO: MinecraftServer Tailscale IP
-            labels:
-              location: onprem
-              component: survival
+          - targets: ['10.43.0.10:8080']  # TODO: svc-survival の ClusterIP
+            labels: { location: onprem, component: survival }
 
       - job_name: 'mod'
         static_configs:
-          - targets: ['100.64.0.10:8081']  # TODO: MinecraftServer Tailscale IP
-            labels:
-              location: onprem
-              component: mod
+          - targets: ['10.43.0.11:8080']  # TODO: svc-mod の ClusterIP
+            labels: { location: onprem, component: mod }
 
       - job_name: 'bedrock'
         static_configs:
-          - targets: ['100.64.0.10:19132']  # TODO: MinecraftServer Tailscale IP
-            labels:
-              location: onprem
-              component: bedrock
+          - targets: ['10.43.0.12:8080']  # TODO: svc-bedrock-metrics の ClusterIP
+            labels: { location: onprem, component: bedrock }
 
-      # ── Kotlin API (AppServer) ─────────────────────────────
+      # ── オンプレミス AppServer（Tailscale subnet-router 経由）──
+      # AppServer の k3s は別クラスター (10.43.0.0/16 は共通CIDRだが別インスタンス)
+      # AppServer 側のサブネットルーターが広告するCIDR上のIPを使用
       - job_name: 'kotlin_api'
         static_configs:
-          - targets: ['100.64.0.11:8080']  # TODO: AppServer Tailscale IP
-            labels:
-              location: onprem
-              component: kotlin-api
+          - targets: ['10.43.1.10:8080']  # TODO: AppServer svc kotlin-api の ClusterIP
+            labels: { location: onprem-app, component: kotlin-api }
 
-      # ── さくらVPS Nginx ────────────────────────────────────
-      # nginx-prometheus-exporter が必要 (nginx stub_status)
+      # ── さくらVPS Nginx（Tailscale 経由）────────────────────
+      # Nginx で stub_status を有効化し nginx-prometheus-exporter を起動する必要あり
+      # tailscale status で さくらVPSノードの Tailscale IP を確認して置換
       - job_name: 'nginx_sakura'
         static_configs:
-          - targets: ['100.64.0.20:9113']  # TODO: さくらVPS Tailscale IP
-            labels:
-              location: sakura-vps
-              component: nginx-proxy
+          - targets: ['100.64.0.20:9113']  # TODO: さくらVPS の Tailscale IP
+            labels: { location: sakura-vps, component: nginx-proxy }
 
 ---
 # ============================================================
 # Prometheus Deployment
 # ============================================================
-# 通常Pod（Spot Pod対象外 - メトリクスは継続収集が必要）
+# 通常Pod（Spot 対象外 / メトリクス継続収集のため）
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -133,9 +120,10 @@ spec:
               mountPath: /prometheus/
           resources:
             requests: { memory: "512Mi", cpu: "250m" }
-            limits: { memory: "1Gi", cpu: "1000m" }
+            limits:   { memory: "1Gi",   cpu: "1000m" }
 
         # Tailscale Sidecar: オンプレ監視ターゲットへのVPN接続
+        # Prometheus <--> Tailscale <--> TS_Network (infrastructure.mermaid)
         - name: tailscale
           image: tailscale/tailscale:latest
           env:
@@ -146,13 +134,18 @@ spec:
                   key: TS_AUTHKEY
             - name: TS_USERSPACE
               value: "true"
+            - name: TS_STATE_DIR
+              value: "/var/lib/tailscale"
             - name: TS_HOSTNAME
               value: "tak-prometheus-gke"
             - name: TS_EXTRA_ARGS
               value: "--accept-routes"
+          volumeMounts:
+            - name: tailscale-state-prometheus
+              mountPath: /var/lib/tailscale
           resources:
             requests: { memory: "64Mi", cpu: "50m" }
-            limits: { memory: "128Mi", cpu: "200m" }
+            limits:   { memory: "128Mi", cpu: "200m" }
 
       volumes:
         - name: prometheus-config
@@ -160,6 +153,8 @@ spec:
             defaultMode: 420
             name: prometheus-server-conf
         - name: prometheus-storage
+          emptyDir: {}
+        - name: tailscale-state-prometheus
           emptyDir: {}
 
 ---
@@ -184,11 +179,42 @@ spec:
 
 ---
 # ============================================================
+# Grafana Tailscale Serve ConfigMap
+# ============================================================
+# Grafana を Tailscale ネットワーク上に HTTP で公開する設定
+# Admin --> Tailscale接続 --> http://tak-grafana-gke:80 で Grafana にアクセス
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-tailscale-serve
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: tak-pipeline
+data:
+  serve-config.json: |
+    {
+      "TCP": {
+        "80": {
+          "HTTPS": false
+        }
+      },
+      "Web": {
+        "${TS_CERT_DOMAIN}:80": {
+          "Handlers": {
+            "/": {
+              "Proxy": "http://127.0.0.1:3000"
+            }
+          }
+        }
+      }
+    }
+
+---
+# ============================================================
 # Grafana Deployment
 # ============================================================
 # 通常Pod（管理者専用）
-# アクセス方法: Tailscale接続後に tak-grafana-gke の Tailscale IP へアクセス
-# Admin --> Tailscale接続 --> Grafana (参照: infrastructure.mermaid)
+# アクセス: Tailscale 接続後 → http://tak-grafana-gke で Grafana UI
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -219,14 +245,18 @@ spec:
                 secretKeyRef:
                   name: grafana-admin-secret
                   key: admin-password
-                  optional: true  # Secretがない場合はデフォルト(admin)を使用
+                  optional: true   # Secret未設定時はデフォルト(admin)を使用
             - name: GF_SERVER_ROOT_URL
               value: "http://tak-grafana-gke"
+            - name: GF_SERVER_HTTP_PORT
+              value: "3000"
           resources:
             requests: { memory: "256Mi", cpu: "100m" }
-            limits: { memory: "512Mi", cpu: "500m" }
+            limits:   { memory: "512Mi", cpu: "500m" }
 
-        # Tailscale Sidecar: 管理者がTailscale経由でGrafanaにアクセス
+        # Tailscale Sidecar: 管理者が Tailscale 経由で Grafana にアクセス
+        # Admin --> Tailscale接続 --> Grafana (infrastructure.mermaid)
+        # serve-config.json により port 3000 を Tailscale ネットワーク上の port 80 に公開
         - name: tailscale
           image: tailscale/tailscale:latest
           env:
@@ -237,19 +267,35 @@ spec:
                   key: TS_AUTHKEY
             - name: TS_USERSPACE
               value: "true"
+            - name: TS_STATE_DIR
+              value: "/var/lib/tailscale"
             - name: TS_HOSTNAME
               value: "tak-grafana-gke"
+            # serve-config.json のパスを指定 → Tailscale が自動的に HTTP サーブを設定
             - name: TS_SERVE_CONFIG
-              value: '{"TCP":{"3000":{"HTTPS":false}},"Web":{"${TS_CERT_DOMAIN}:3000":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:3000"}}}}}'
+              value: "/tailscale-serve/serve-config.json"
+          volumeMounts:
+            - name: tailscale-state-grafana
+              mountPath: /var/lib/tailscale
+            - name: tailscale-serve-config
+              mountPath: /tailscale-serve
+              readOnly: true
           resources:
             requests: { memory: "64Mi", cpu: "50m" }
-            limits: { memory: "128Mi", cpu: "200m" }
+            limits:   { memory: "128Mi", cpu: "200m" }
+
+      volumes:
+        - name: tailscale-state-grafana
+          emptyDir: {}
+        - name: tailscale-serve-config
+          configMap:
+            name: grafana-tailscale-serve
 
 ---
 # ============================================================
 # Grafana Service (ClusterIP - 外部公開しない)
 # ============================================================
-# 管理者はTailscale経由でのみアクセス可能
+# 外部アクセスは Tailscale 経由のみ（LoadBalancer 不使用）
 apiVersion: v1
 kind: Service
 metadata:

@@ -1,16 +1,33 @@
 # ============================================================
-# TAK Pipeline - Backend Servers (On-Premises k3s)
+# TAK Pipeline - Backend Servers (MinecraftServer k3s)
 # ============================================================
-# ハイブリッド構成でのオンプレミス側サーバー
+# オンプレ MinecraftServer ノードに展開するリソース
 #
-# 変更点:
-#   - Velocityはオンプレから削除（GKEに移動）
-#   - Lobbyはオンプレから削除（GKEに移動）
-#   - Survival/IndustryはGKEからTailscale経由でアクセス
+# コンポーネント (infrastructure.mermaid):
+#   Java-Survival      : Paper Survival (4GB)
+#   Java-Indicatory MOD: NeoForge MOD (8GB)
+#   Bedrock Server     : Bedrock Edition (2GB)
+#   Tailscale Client   : Subnet Router (GKE ↔ オンプレ VPN)
+#
+# 接続フロー:
+#   Velocity(GKE) → Tailscale → svc-survival / svc-mod
+#   Nginx(さくらVPS) → Tailscale → svc-bedrock
+#   Prometheus(GKE) → Tailscale → mc-monitor(:8080) 各Pod
 # ============================================================
 
-# === ConfigMap: Paper-Velocity設定 ===
-# GKEのVelocityと同じSecretを使用すること
+# ── Namespace ────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minecraft
+  labels:
+    app.kubernetes.io/part-of: tak-pipeline
+    location: onprem-minecraft-server
+
+---
+# ── Paper-Velocity 設定テンプレート ──────────────────────────
+# Survival / Lobby などの Paper サーバーに注入する
+# Velocity forwarding secret 設定
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -28,7 +45,7 @@ data:
 
 ---
 # ============================================================
-# 1. サバイバルサーバー (4GB)
+# 1. Java-Survival (4GB / Paper)
 # ============================================================
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -69,18 +86,16 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
+      # Velocity secret を paper-global.yml に注入
       initContainers:
         - name: inject-velocity-secret
           image: busybox:1.36
           command: ["sh", "-c"]
           args:
             - |
-              echo "[init] Creating config directory..."
               mkdir -p /data/config
-              echo "[init] Injecting Velocity secret..."
               sed "s/__VELOCITY_SECRET__/${VELOCITY_SECRET}/g" \
                 /template/paper-global.yml.template > /data/config/paper-global.yml
-              echo "[init] Done."
           env:
             - name: VELOCITY_SECRET
               valueFrom:
@@ -93,20 +108,20 @@ spec:
               readOnly: true
             - name: data
               mountPath: /data
+
       containers:
+        # ── Survival サーバー本体 ─────────────────────────────
         - name: minecraft
           image: itzg/minecraft-server:latest
           env:
-            - { name: EULA, value: "TRUE" }
-            - { name: TYPE, value: "PAPER" }
-            - { name: VERSION, value: "1.21.4" }
-            - { name: MEMORY, value: "4G" }
-            - { name: ONLINE_MODE, value: "FALSE" }
+            - { name: EULA,         value: "TRUE" }
+            - { name: TYPE,         value: "PAPER" }
+            - { name: VERSION,      value: "1.21.4" }
+            - { name: MEMORY,       value: "4G" }
+            - { name: ONLINE_MODE,  value: "FALSE" }
             - { name: ENABLE_QUERY, value: "true" }
-            - {
-                name: JVM_XX_OPTS,
-                value: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=8M",
-              }
+            - name: JVM_XX_OPTS
+              value: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=8M"
           ports:
             - containerPort: 25565
               name: minecraft
@@ -114,17 +129,15 @@ spec:
             - mountPath: /data
               name: data
           resources:
-            requests: { memory: "4Gi", cpu: "1000m" }
-            limits: { memory: "4.5Gi", cpu: "3000m" }
+            requests: { memory: "4Gi",   cpu: "1000m" }
+            limits:   { memory: "4.5Gi", cpu: "3000m" }
           startupProbe:
-            tcpSocket:
-              port: 25565
+            tcpSocket: { port: 25565 }
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 30
           livenessProbe:
-            tcpSocket:
-              port: 25565
+            tcpSocket: { port: 25565 }
             periodSeconds: 30
             failureThreshold: 3
           readinessProbe:
@@ -132,6 +145,22 @@ spec:
               command: ["mc-health"]
             initialDelaySeconds: 60
             periodSeconds: 10
+
+        # ── mc-monitor（Prometheus Exporter）──────────────────
+        # Prometheus -->|監視| Java_Survival (infrastructure.mermaid)
+        - name: mc-monitor
+          image: itzg/mc-monitor:latest
+          args: ["export-for-prometheus"]
+          env:
+            - { name: EXPORT_SERVERS, value: "localhost:25565" }
+            - { name: DEBUG,          value: "false" }
+          ports:
+            - containerPort: 8080
+              name: metrics
+          resources:
+            requests: { memory: "32Mi", cpu: "10m" }
+            limits:   { memory: "64Mi", cpu: "100m" }
+
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -148,19 +177,20 @@ metadata:
   namespace: minecraft
   labels:
     app.kubernetes.io/component: survival
+    app.kubernetes.io/part-of: tak-pipeline
 spec:
   selector:
     app: mc-survival
+  type: ClusterIP
   ports:
     - port: 25565
       name: minecraft
     - port: 8080
       name: metrics
-  type: ClusterIP
 
 ---
 # ============================================================
-# 2. Java-Indicatory MOD サーバー (8GB) - NeoForge
+# 2. Java-Indicatory MOD (8GB / NeoForge)
 # ============================================================
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -205,18 +235,19 @@ spec:
     spec:
       terminationGracePeriodSeconds: 120
       containers:
+        # ── MOD サーバー本体（NeoForge）──────────────────────
         - name: minecraft
           image: itzg/minecraft-server:latest
           env:
-            - { name: EULA, value: "TRUE" }
-            - { name: TYPE, value: "NEOFORGE" }
-            - { name: VERSION, value: "1.20.4" }
-            - { name: NEOFORGE_VERSION, value: "20.4.237" }
-            - { name: MEMORY, value: "8G" }
-            - { name: ONLINE_MODE, value: "FALSE" }
-            - { name: ENABLE_QUERY, value: "true" }
-            - { name: MAX_TICK_TIME, value: "120000" }
-            - { name: VIEW_DISTANCE, value: "8" }
+            - { name: EULA,                value: "TRUE" }
+            - { name: TYPE,                value: "NEOFORGE" }
+            - { name: VERSION,             value: "1.20.4" }
+            - { name: NEOFORGE_VERSION,    value: "20.4.237" }
+            - { name: MEMORY,              value: "8G" }
+            - { name: ONLINE_MODE,         value: "FALSE" }
+            - { name: ENABLE_QUERY,        value: "true" }
+            - { name: MAX_TICK_TIME,       value: "120000" }
+            - { name: VIEW_DISTANCE,       value: "8" }
             - { name: SIMULATION_DISTANCE, value: "6" }
             - name: JVM_XX_OPTS
               value: >-
@@ -243,17 +274,15 @@ spec:
             - mountPath: /data
               name: data
           resources:
-            requests: { memory: "8Gi", cpu: "2000m" }
-            limits: { memory: "10Gi", cpu: "4000m" }
+            requests: { memory: "8Gi",  cpu: "2000m" }
+            limits:   { memory: "10Gi", cpu: "4000m" }
           startupProbe:
-            tcpSocket:
-              port: 25565
+            tcpSocket: { port: 25565 }
             initialDelaySeconds: 120
             periodSeconds: 15
             failureThreshold: 40
           livenessProbe:
-            tcpSocket:
-              port: 25565
+            tcpSocket: { port: 25565 }
             periodSeconds: 60
             failureThreshold: 3
           readinessProbe:
@@ -261,6 +290,22 @@ spec:
               command: ["mc-health"]
             initialDelaySeconds: 180
             periodSeconds: 15
+
+        # ── mc-monitor（Prometheus Exporter）──────────────────
+        # Prometheus -->|監視| Java_Mod (infrastructure.mermaid)
+        - name: mc-monitor
+          image: itzg/mc-monitor:latest
+          args: ["export-for-prometheus"]
+          env:
+            - { name: EXPORT_SERVERS, value: "localhost:25565" }
+            - { name: DEBUG,          value: "false" }
+          ports:
+            - containerPort: 8080
+              name: metrics
+          resources:
+            requests: { memory: "32Mi", cpu: "10m" }
+            limits:   { memory: "64Mi", cpu: "100m" }
+
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -274,23 +319,24 @@ metadata:
   namespace: minecraft
   labels:
     app.kubernetes.io/component: mod
+    app.kubernetes.io/part-of: tak-pipeline
 spec:
   selector:
     app: mc-mod
+  type: ClusterIP
   ports:
     - port: 25565
       name: minecraft
     - port: 8080
       name: metrics
-  type: ClusterIP
 
 ---
 # ============================================================
 # 3. Bedrock Server (2GB)
 # ============================================================
-# さくらVPS Nginx → Tailscale → このBedrockサーバー
-# UDP 19132 で受信
-# ============================================================
+# さくらVPS Nginx(UDP Proxy) → Tailscale → このサーバー
+# Nginx_Sakura --> TS_Router_Sub -->|転送| Bedrock_Server
+# (infrastructure.mermaid)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -328,18 +374,20 @@ spec:
         app: mc-bedrock
         app.kubernetes.io/component: bedrock
       annotations:
+        # mc-monitor が :8080 でメトリクスを公開する（19132/UDP ではない）
         prometheus.io/scrape: "true"
-        prometheus.io/port: "19132"
+        prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
       terminationGracePeriodSeconds: 30
       containers:
+        # ── Bedrock サーバー本体 ──────────────────────────────
         - name: bedrock
           image: itzg/minecraft-bedrock-server:latest
           env:
-            - { name: EULA, value: "TRUE" }
-            - { name: GAMEMODE, value: "survival" }
-            - { name: DIFFICULTY, value: "normal" }
+            - { name: EULA,        value: "TRUE" }
+            - { name: GAMEMODE,    value: "survival" }
+            - { name: DIFFICULTY,  value: "normal" }
             - { name: SERVER_NAME, value: "sushiski Bedrock" }
             - { name: MAX_PLAYERS, value: "20" }
             - { name: ALLOW_CHEATS, value: "false" }
@@ -351,8 +399,8 @@ spec:
             - mountPath: /data
               name: data
           resources:
-            requests: { memory: "2Gi", cpu: "500m" }
-            limits: { memory: "2.5Gi", cpu: "2000m" }
+            requests: { memory: "2Gi",   cpu: "500m" }
+            limits:   { memory: "2.5Gi", cpu: "2000m" }
           startupProbe:
             exec:
               command: ["bash", "-c", "mc-monitor status-bedrock --host 127.0.0.1 --port 19132 || exit 0"]
@@ -364,6 +412,26 @@ spec:
               command: ["bash", "-c", "mc-monitor status-bedrock --host 127.0.0.1 --port 19132 || exit 0"]
             periodSeconds: 60
             failureThreshold: 3
+
+        # ── mc-monitor（Prometheus Exporter / Bedrock対応）────
+        # Prometheus -->|監視| Bedrock_Server (infrastructure.mermaid)
+        # --edition bedrock で UDP 19132 に問い合わせてメトリクスを :8080 で公開
+        - name: mc-monitor
+          image: itzg/mc-monitor:latest
+          args:
+            - "export-for-prometheus"
+            - "--edition"
+            - "bedrock"
+          env:
+            - { name: EXPORT_SERVERS, value: "localhost:19132" }
+            - { name: DEBUG,          value: "false" }
+          ports:
+            - containerPort: 8080
+              name: metrics
+          resources:
+            requests: { memory: "32Mi", cpu: "10m" }
+            limits:   { memory: "64Mi", cpu: "100m" }
+
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -377,21 +445,44 @@ metadata:
   namespace: minecraft
   labels:
     app.kubernetes.io/component: bedrock
+    app.kubernetes.io/part-of: tak-pipeline
 spec:
   selector:
     app: mc-bedrock
+  type: ClusterIP
   ports:
     - port: 19132
       name: bedrock
       protocol: UDP
-  type: ClusterIP
+    - port: 8080
+      name: metrics
 
 ---
 # ============================================================
-# Tailscale Subnet Router (オンプレ側)
+# 4. Tailscale Subnet Router
 # ============================================================
-# GKEからオンプレのService IPにアクセスするためのルーター
-# 既存のsubnet-routerがあれば、そちらを利用
+# TS_Router_Sub (infrastructure.mermaid)
+# 役割:
+#   - GKE Velocity → オンプレ Survival / Mod へのルーティング
+#   - Prometheus(GKE) → オンプレ mc-monitor メトリクス収集
+#   - さくらVPS → Bedrock Server への UDP 転送
+#   - k3s Service CIDR (10.43.0.0/16) を Tailscale に広告
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-tailscale-state
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: tailscale-router
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -399,6 +490,7 @@ metadata:
   namespace: minecraft
   labels:
     app: tailscale-router
+    app.kubernetes.io/component: tailscale-router
     app.kubernetes.io/part-of: tak-pipeline
 spec:
   replicas: 1
@@ -410,7 +502,6 @@ spec:
       labels:
         app: tailscale-router
     spec:
-      # 特権コンテナが必要
       containers:
         - name: tailscale
           image: tailscale/tailscale:latest
@@ -427,8 +518,8 @@ spec:
             - name: TS_STATE_DIR
               value: "/var/lib/tailscale"
             - name: TS_HOSTNAME
-              value: "tak-onprem-router"
-            # サブネットルーター設定（k3s Service CIDR）
+              value: "tak-onprem-mc"
+            # k3s Service CIDR を Tailscale ネットワークに広告
             - name: TS_ROUTES
               value: "10.43.0.0/16"
             - name: TS_EXTRA_ARGS
@@ -439,15 +530,14 @@ spec:
             - name: dev-net-tun
               mountPath: /dev/net/tun
           resources:
-            requests:
-              memory: "64Mi"
-              cpu: "50m"
-            limits:
-              memory: "128Mi"
-              cpu: "200m"
+            requests: { memory: "64Mi", cpu: "50m" }
+            limits:   { memory: "128Mi", cpu: "200m" }
+
       volumes:
+        # PVC で状態永続化（Pod再起動時も再認証不要）
         - name: tailscale-state
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: pvc-tailscale-state
         - name: dev-net-tun
           hostPath:
             path: /dev/net/tun

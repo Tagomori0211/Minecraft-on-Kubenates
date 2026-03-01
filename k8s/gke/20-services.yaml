@@ -4,9 +4,9 @@
 
 ---
 # ============================================================
-# Velocity LoadBalancer Service
+# Velocity LoadBalancer（外部公開 / Java版プレイヤー入口）
 # ============================================================
-# 外部公開用（プレイヤー接続エンドポイント）
+# Player_Java -->|25565/TCP| Velocity (infrastructure.mermaid)
 apiVersion: v1
 kind: Service
 metadata:
@@ -17,31 +17,24 @@ metadata:
     app.kubernetes.io/component: proxy
     app.kubernetes.io/part-of: tak-pipeline
   annotations:
-    # GKE固有のアノテーション
-    # 固定IPを使用する場合（Terraformで作成したIP）
-    # networking.gke.io/load-balancer-ip-addresses: "tak-minecraft-ip"
-    
-    # Network Tier（STANDARDでコスト削減、PREMIUMで低遅延）
+    # Terraformで作成した固定IPを使用する場合はコメントを外す
+    # networking.gke.io/load-balancer-ip-addresses: "tagomori-minecraft-ip"
     cloud.google.com/network-tier: "STANDARD"
 spec:
   type: LoadBalancer
-  # 外部トラフィックポリシー
-  # Local: クライアントIPを保持（推奨）
-  # Cluster: ノード間負荷分散
   externalTrafficPolicy: Local
   selector:
     app: velocity
   ports:
     - name: minecraft
-      port: 25565        # 外部公開ポート
-      targetPort: 25577  # Velocityの実際のポート
+      port: 25565
+      targetPort: 25577
       protocol: TCP
 
 ---
 # ============================================================
-# Velocity ClusterIP Service (内部用)
+# Velocity ClusterIP（内部通信 + Prometheus監視）
 # ============================================================
-# クラスター内からのアクセス用
 apiVersion: v1
 kind: Service
 metadata:
@@ -50,6 +43,7 @@ metadata:
   labels:
     app: velocity
     app.kubernetes.io/component: proxy
+    app.kubernetes.io/part-of: tak-pipeline
 spec:
   type: ClusterIP
   selector:
@@ -58,12 +52,16 @@ spec:
     - name: minecraft
       port: 25577
       targetPort: 25577
+    - name: metrics
+      port: 8080
+      targetPort: 8080
 
 ---
 # ============================================================
-# Lobby ClusterIP Service
+# Lobby ClusterIP
 # ============================================================
-# Velocityからのアクセス用（クラスター内部のみ）
+# Velocity --> Lobby:25566 (ClusterIP)
+# Prometheus --> Lobby:8080 (mc-monitor metrics)
 apiVersion: v1
 kind: Service
 metadata:
@@ -72,6 +70,7 @@ metadata:
   labels:
     app: mc-lobby
     app.kubernetes.io/component: lobby
+    app.kubernetes.io/part-of: tak-pipeline
 spec:
   type: ClusterIP
   selector:
@@ -83,45 +82,3 @@ spec:
     - name: metrics
       port: 8080
       targetPort: 8080
-
----
-# ============================================================
-# Lobby Metrics Service (Prometheus用)
-# ============================================================
-apiVersion: v1
-kind: Service
-metadata:
-  name: lobby-metrics
-  namespace: minecraft
-  labels:
-    app: mc-lobby
-    metrics: "true"
-spec:
-  type: ClusterIP
-  selector:
-    app: mc-lobby
-  ports:
-    - name: metrics
-      port: 8080
-      targetPort: 8080
-
----
-# ============================================================
-# PodMonitor for GKE Managed Prometheus (optional)
-# ============================================================
-# GKE Managed Prometheusを使用する場合
-apiVersion: monitoring.googleapis.com/v1
-kind: PodMonitoring
-metadata:
-  name: minecraft-monitoring
-  namespace: minecraft
-  labels:
-    app.kubernetes.io/part-of: tak-pipeline
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/part-of: tak-pipeline
-  endpoints:
-    - port: metrics
-      interval: 30s
-      path: /metrics

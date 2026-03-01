@@ -1,62 +1,78 @@
 ---
-- name: Setup k3s and Tailscale on Servers
+# ============================================================
+# TAK Pipeline - k3s + Tailscale インストール
+# ============================================================
+# 対象ホスト (infrastructure.mermaid):
+#   minecraft : オンプレ MinecraftServer ノード (192.168.0.151)
+#   app       : オンプレ AppServer ノード       (192.168.0.150)
+#
+# 各ノードは独立した k3s シングルクラスター
+# Tailscale で GKE と接続する
+# ============================================================
+
+- name: Install k3s and Tailscale
   hosts: minecraft,app
   become: yes
 
   tasks:
-    # 1. まずは下準備。apt update をしておきます
+
+    # ── 前準備 ─────────────────────────────────────────────
     - name: Update apt cache
       apt:
         update_cache: yes
-        cache_valid_time: 3600 # 1時間以内ならキャッシュを使って時短する
+        cache_valid_time: 3600
 
-    # 2. 依存パッケージのインストール
-    - name: Install dependencies (curl)
+    - name: Install dependencies
       apt:
-        name: curl
+        name:
+          - curl
+          - iptables
         state: present
 
-    # 3. k3sをインストールします（公式スクリプトを使用）
-    # shellモジュールは強力ですが、毎回走ると遅いので条件を付けます
-    - name: Install k3s
+    # ── k3s インストール ────────────────────────────────────
+    - name: Install k3s (single-node server)
       shell: curl -sfL https://get.k3s.io | sh -
       args:
-        creates: /usr/local/bin/k3s # このファイルがあれば「インストール済み」とみなしてスキップする（冪等性の確保）
+        creates: /usr/local/bin/k3s   # 存在すればスキップ（冪等性）
 
-    # 4. サービスが起動しているか確認します
     - name: Ensure k3s service is running
       systemd:
         name: k3s
         state: started
         enabled: yes
 
-    # ============================================================
-    # Tailscale インストール
-    # ============================================================
-    # infrastructure.mermaid:
-    #   MinecraftServer -- Tailscale Client (TS_Router_Sub)
-    #   AppServer       -- Tailscale Client (CF Tunnel経由のため不要だが管理用に導入)
-
-    # 5. Tailscaleの公式インストールスクリプトを実行
+    # ── Tailscale インストール ──────────────────────────────
     - name: Install Tailscale
       shell: curl -fsSL https://tailscale.com/install.sh | sh
       args:
-        creates: /usr/sbin/tailscaled # インストール済みならスキップ
+        creates: /usr/bin/tailscale   # 存在すればスキップ
 
-    # 6. tailscaledサービスを有効化・起動
     - name: Ensure tailscaled service is running
       systemd:
         name: tailscaled
         state: started
         enabled: yes
 
-    # 7. Tailscale認証（tailscale up）はサーバーごとに異なるため手動実行
-    # 手順: tailscale up --authkey=<TS_AUTHKEY> --hostname=<hostname>
-    # MinecraftServer: tailscale up --authkey=<key> --hostname=tak-onprem-mc --advertise-routes=10.43.0.0/16
-    # AppServer:       tailscale up --authkey=<key> --hostname=tak-onprem-app
-    - name: Show Tailscale auth reminder
+    # ── Tailscale 認証（ノード別に手動実行）────────────────
+    # tailscale up は --advertise-routes のオプションが異なるため
+    # 自動化せず手動で実行する（認証は一度だけ必要）
+    - name: Show Tailscale auth instructions
       debug:
         msg: |
-          [Tailscale] 認証が必要です。各サーバーで以下を実行してください:
-          MinecraftServer: tailscale up --authkey=<TS_AUTHKEY> --hostname=tak-onprem-mc --advertise-routes=10.43.0.0/16
-          AppServer:       tailscale up --authkey=<TS_AUTHKEY> --hostname=tak-onprem-app
+          =====================================================
+          [Tailscale] 認証が必要です。各サーバーで実行してください:
+
+          MinecraftServer (192.168.0.151):
+            sudo tailscale up \
+              --authkey=<TS_AUTHKEY> \
+              --hostname=tak-onprem-mc \
+              --advertise-routes=10.43.0.0/16
+
+          AppServer (192.168.0.150):
+            sudo tailscale up \
+              --authkey=<TS_AUTHKEY> \
+              --hostname=tak-onprem-app
+
+          ※ Tailscale管理画面でサブネットルートを承認すること
+          =====================================================
+      when: inventory_hostname in groups['minecraft'] or inventory_hostname in groups['app']

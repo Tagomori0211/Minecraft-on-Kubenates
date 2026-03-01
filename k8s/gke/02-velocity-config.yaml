@@ -1,8 +1,12 @@
 # ============================================================
 # TAK Pipeline - Velocity Proxy Configuration
 # ============================================================
-# Velocity設定ファイル
-# バックエンドサーバーへの転送ルールを定義
+# Velocity設定ファイル（GKE Autopilot）
+#
+# 転送先:
+#   lobby    → lobby:25566         (GKE内 ClusterIP)
+#   survival → <tailscale-ip>:25565 (オンプレ Tailscale経由)
+#   mod      → <tailscale-ip>:25565 (オンプレ Tailscale経由)
 # ============================================================
 
 apiVersion: v1
@@ -14,116 +18,63 @@ metadata:
     app.kubernetes.io/component: velocity
     app.kubernetes.io/part-of: tak-pipeline
 data:
-  # ============================================================
-  # velocity.toml - メイン設定
-  # ============================================================
   velocity.toml: |
-    # ============================================================
-    # TAK Pipeline - Velocity Proxy Configuration
-    # ============================================================
-    # Architecture:
-    #   [Player] -> [Velocity@GKE] -> [Lobby@GKE / Backend@OnPrem]
-    # ============================================================
-
-    # バインド設定
     bind = "0.0.0.0:25577"
 
-    # MOTD（サーバーリストに表示）
-    motd = "<gradient:#ff6b6b:#4ecdc4>TAK Pipeline</gradient> <gray>|</gray> <white>Hybrid Cloud</white>"
-
-    # 最大プレイヤー数
+    motd = "<gradient:#34a853:#4285f4>すしすきー</gradient> <gray>|</gray> <white>Minecraft Server</white>"
     show-max-players = 100
 
-    # オンラインモード（Mojang認証）
+    # Mojang認証（オンラインモード）
     online-mode = true
 
-    # 転送モード（modern = Velocity native forwarding）
+    # Velocity native forwarding（Paper/Lobbyサーバー側でも要設定）
     player-info-forwarding-mode = "modern"
+    forwarding-secret-file = "forwarding.secret"
 
-    # ============================================================
-    # サーバー定義
-    # ============================================================
+    announce-forge = true
+    kick-existing-players = false
+    ping-passthrough = "DISABLED"
+    enable-player-address-logging = true
+
     [servers]
-    # --- GKE内サーバー (localhost) ---
-    # Lobbyは同一Pod or 同一クラスター内
-    lobby = "127.0.0.1:25566"
+    # GKE内 Lobby（ClusterIP サービス名で接続）
+    lobby = "lobby:25566"
 
-    # --- オンプレミスサーバー (Tailscale経由) ---
-    # NOTE: 以下のIPはTailscale接続後に確認して更新すること
-    # 確認方法: tailscale status で表示されるIP、または
-    #           オンプレ側の kubectl get svc -n minecraft
-    
-    # Survivalサーバー (k3s Service IP or Tailscale IP)
-    # 例: Tailscale subnet-router経由でk3s Service IPにアクセス
-    survival = "100.64.0.1:25565"  # TODO: 実際のTailscale IPに置換
+    # オンプレミス Survival（Tailscale subnet-router 経由でk3s ClusterIPに到達）
+    # 確認方法: オンプレ側で `kubectl get svc svc-survival -n minecraft`
+    survival = "10.43.0.10:25565"  # TODO: svc-survival の k3s ClusterIP に置換
 
-    # Java-Indicatory MODサーバー (NeoForge)
-    mod = "100.64.0.2:25565"  # TODO: 実際のTailscale IPに置換
+    # オンプレミス Java-Indicatory MOD（NeoForge）
+    mod = "10.43.0.11:25565"       # TODO: svc-mod の k3s ClusterIP に置換
 
-    # ============================================================
-    # 接続順序（フォールバック）
-    # ============================================================
-    # プレイヤーが最初に接続するサーバー
+    # 接続時の最初のサーバー（フォールバック順）
     try = ["lobby"]
 
-    # ============================================================
-    # 強制ホスト（ドメイン別振り分け）
-    # ============================================================
     [forced-hosts]
-    # 例: survival.example.com で接続すると直接Survivalへ
-    # "survival.tak.example.com" = ["survival"]
-    # "industry.tak.example.com" = ["industry"]
+    # ドメイン別振り分け（例）
+    # "survival.sushiski.example.com" = ["survival"]
+    # "mod.sushiski.example.com"      = ["mod"]
 
-    # ============================================================
-    # 詳細設定
-    # ============================================================
     [advanced]
-    # 圧縮閾値（-1で無効、256が一般的）
     compression-threshold = 256
     compression-level = -1
-
-    # ネットワーク圧縮
-    network-compression-threshold = 256
-
-    # 接続タイムアウト
     connection-timeout = 5000
     read-timeout = 30000
-
-    # ログレベル
     log-command-executions = false
     log-player-connections = true
-
-    # BungeeCordプラグイン互換
     bungee-plugin-message-channel = true
-
-    # Forgeサポート（NeoForge用）
-    announce-forge = true
-
-    # TCPファストオープン
     tcp-fast-open = true
-
-    # HAProxy PROXY protocol（LoadBalancer経由の場合）
     haproxy-protocol = false
+    failover-on-unexpected-server-disconnect = true
 
-    # ============================================================
-    # クエリ設定（サーバーリスト用）
-    # ============================================================
     [query]
     enabled = false
     port = 25577
 
-  # ============================================================
-  # forwarding.secret - 転送シークレット
-  # ============================================================
-  # NOTE: このファイルはinitContainerでSecretから生成される
-  # ここでは空のプレースホルダーを定義
-
 ---
 # ============================================================
-# Paper側設定テンプレート（参考用）
+# Paper側設定テンプレート（参考 / オンプレ側に適用）
 # ============================================================
-# オンプレミス側のPaperサーバーに適用する設定
-# 既存のpaper-velocity-config ConfigMapと同期させること
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -133,14 +84,11 @@ metadata:
     app.kubernetes.io/part-of: tak-pipeline
     purpose: reference-only
 data:
-  # この設定はオンプレミス側で使用
-  # GKE側には適用しない（参考情報として同梱）
   paper-global.yml.example: |
-    # Paper側のVelocity連携設定
-    # オンプレミスの各Paperサーバーに適用
+    # オンプレミス側の Paper サーバー（Survival / Lobby）に適用する設定
+    # velocity-secret と同じ値を使用すること
     proxies:
       velocity:
         enabled: true
         online-mode: true
-        # velocity-secretと同じ値を設定
         secret: "YOUR_VELOCITY_SECRET_HERE"
