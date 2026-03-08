@@ -74,17 +74,17 @@ spec:
         - name: minecraft
           image: itzg/minecraft-server:latest
           env:
-            - { name: EULA,             value: "TRUE" }
-            - { name: TYPE,             value: "PAPER" }
-            - { name: VERSION,          value: "1.21.4" }
-            - { name: MEMORY,           value: "1G" }
-            - { name: ONLINE_MODE,      value: "FALSE" }   # Velocity proxy経由
-            - { name: ENABLE_QUERY,     value: "true" }
-            - { name: DIFFICULTY,       value: "peaceful" }
-            - { name: GAMEMODE,         value: "adventure" }
+            - { name: EULA, value: "TRUE" }
+            - { name: TYPE, value: "PAPER" }
+            - { name: VERSION, value: "1.21.4" }
+            - { name: MEMORY, value: "1G" }
+            - { name: ONLINE_MODE, value: "FALSE" } # Velocity proxy経由
+            - { name: ENABLE_QUERY, value: "true" }
+            - { name: DIFFICULTY, value: "peaceful" }
+            - { name: GAMEMODE, value: "adventure" }
             - { name: SPAWN_PROTECTION, value: "0" }
-            - { name: MAX_PLAYERS,      value: "100" }
-            - { name: SERVER_PORT,      value: "25566" }
+            - { name: MAX_PLAYERS, value: "100" }
+            - { name: SERVER_PORT, value: "25566" }
             - name: JVM_XX_OPTS
               value: >-
                 -XX:+UseG1GC
@@ -98,8 +98,8 @@ spec:
             - name: lobby-data
               mountPath: /data
           resources:
-            requests: { memory: "1Gi",   cpu: "250m" }
-            limits:   { memory: "1.5Gi", cpu: "1000m" }
+            requests: { memory: "1Gi", cpu: "250m" }
+            limits: { memory: "1.5Gi", cpu: "1000m" }
           startupProbe:
             tcpSocket: { port: 25566 }
             initialDelaySeconds: 30
@@ -119,9 +119,6 @@ spec:
         # Lobby <--> Tailscale VPN (infrastructure.mermaid)
         - name: tailscale
           image: tailscale/tailscale:latest
-          securityContext:
-            capabilities:
-              add: ["NET_ADMIN", "NET_RAW"]
           env:
             - name: TS_AUTHKEY
               valueFrom:
@@ -141,7 +138,7 @@ spec:
               mountPath: /var/lib/tailscale
           resources:
             requests: { memory: "64Mi", cpu: "50m" }
-            limits:   { memory: "128Mi", cpu: "200m" }
+            limits: { memory: "128Mi", cpu: "200m" }
 
         # ── mc-monitor（Prometheus Exporter）───────────────────
         # Prometheus -->|監視| Lobby (infrastructure.mermaid)
@@ -150,13 +147,13 @@ spec:
           args: ["export-for-prometheus"]
           env:
             - { name: EXPORT_SERVERS, value: "localhost:25566" }
-            - { name: DEBUG,          value: "false" }
+            - { name: DEBUG, value: "false" }
           ports:
             - containerPort: 8080
               name: metrics
           resources:
             requests: { memory: "32Mi", cpu: "10m" }
-            limits:   { memory: "64Mi", cpu: "100m" }
+            limits: { memory: "64Mi", cpu: "100m" }
 
       volumes:
         - name: lobby-data
