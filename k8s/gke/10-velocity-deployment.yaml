@@ -43,17 +43,21 @@ spec:
           operator: "Equal"
           value: "true"
           effect: "NoSchedule"
+        - key: "node.kubernetes.io/memory-pressure"
+          operator: "Exists"
+          effect: "NoSchedule"
       terminationGracePeriodSeconds: 30
 
-      # ── Init: forwarding.secret 生成 ─────────────────────────
+      # ── Init: Config & forwarding.secret 生成 ─────────────────────────
       initContainers:
-        - name: init-forwarding-secret
+        - name: init-velocity-config
           image: busybox:1.36
           command: ["sh", "-c"]
           args:
             - |
               echo -n "${VELOCITY_SECRET}" > /velocity-data/forwarding.secret
               chmod 600 /velocity-data/forwarding.secret
+              cp /tmp/velocity.toml /velocity-data/velocity.toml
           env:
             - name: VELOCITY_SECRET
               valueFrom:
@@ -63,6 +67,9 @@ spec:
           volumeMounts:
             - name: velocity-data
               mountPath: /velocity-data
+            - name: velocity-config
+              mountPath: /tmp/velocity.toml
+              subPath: velocity.toml
 
       containers:
         # ── Velocity Proxy ──────────────────────────────────────
@@ -71,9 +78,9 @@ spec:
           env:
             - { name: TYPE, value: "VELOCITY" }
             - { name: VELOCITY_VERSION, value: "3.4.0-SNAPSHOT" }
-            - { name: MEMORY, value: "512M" }
-            - { name: INIT_MEMORY, value: "512M" }
-            - { name: MAX_MEMORY, value: "512M" }
+            - { name: MEMORY, value: "256M" }
+            - { name: INIT_MEMORY, value: "256M" }
+            - { name: MAX_MEMORY, value: "256M" }
             - name: JVM_XX_OPTS
               value: >-
                 -XX:+UseG1GC
@@ -86,14 +93,10 @@ spec:
               name: minecraft
               protocol: TCP
           volumeMounts:
-            - name: velocity-config
-              mountPath: /server/velocity.toml
-              subPath: velocity.toml
             - name: velocity-data
-              mountPath: /server/forwarding.secret
-              subPath: forwarding.secret
+              mountPath: /server
           resources:
-            requests: { memory: "512Mi", cpu: "250m" }
+            requests: { memory: "256Mi", cpu: "100m" }
             limits: { memory: "768Mi", cpu: "1000m" }
           startupProbe:
             tcpSocket: { port: 25577 }
@@ -121,6 +124,8 @@ spec:
                   key: TS_AUTHKEY
             - name: TS_USERSPACE
               value: "true" # GKE Autopilot はカーネルモード不可
+            - name: TS_KUBE_SECRET
+              value: ""
             - name: TS_STATE_DIR
               value: "/var/lib/tailscale"
             - name: TS_HOSTNAME
@@ -131,14 +136,14 @@ spec:
             - name: tailscale-state
               mountPath: /var/lib/tailscale
           resources:
-            requests: { memory: "64Mi", cpu: "50m" }
-            limits: { memory: "128Mi", cpu: "200m" }
+            requests: { memory: "32Mi", cpu: "10m" }
+            limits: { memory: "64Mi", cpu: "100m" }
           readinessProbe:
             exec:
               command:
                 - /bin/sh
                 - -c
-                - 'tailscale status --json | grep -q ''"BackendState":"Running"'''
+                - 'tailscale status --json | grep "\"BackendState\"" | grep -q Running'
             initialDelaySeconds: 10
             periodSeconds: 10
             failureThreshold: 6

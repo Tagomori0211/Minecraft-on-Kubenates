@@ -19,7 +19,6 @@ metadata:
   annotations:
     # Terraformで作成した固定IPを使用する場合はコメントを外す
     # networking.gke.io/load-balancer-ip-addresses: "tagomori-minecraft-ip"
-    cloud.google.com/network-tier: "STANDARD"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local

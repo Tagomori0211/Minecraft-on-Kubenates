@@ -42,6 +42,9 @@ spec:
           operator: "Equal"
           value: "true"
           effect: "NoSchedule"
+        - key: "node.kubernetes.io/memory-pressure"
+          operator: "Exists"
+          effect: "NoSchedule"
       terminationGracePeriodSeconds: 30
 
       # ── Init: paper-global.yml 生成（Velocity forwarding設定）─
@@ -77,7 +80,8 @@ spec:
             - { name: EULA, value: "TRUE" }
             - { name: TYPE, value: "PAPER" }
             - { name: VERSION, value: "1.21.4" }
-            - { name: MEMORY, value: "1G" }
+            - { name: MEMORY, value: "512M" }
+            - { name: MAX_MEMORY, value: "512M" }
             - { name: ONLINE_MODE, value: "FALSE" } # Velocity proxy経由
             - { name: ENABLE_QUERY, value: "true" }
             - { name: DIFFICULTY, value: "peaceful" }
@@ -98,8 +102,8 @@ spec:
             - name: lobby-data
               mountPath: /data
           resources:
-            requests: { memory: "1Gi", cpu: "250m" }
-            limits: { memory: "1.5Gi", cpu: "1000m" }
+            requests: { memory: "512Mi", cpu: "100m" }
+            limits: { memory: "1Gi", cpu: "1000m" }
           startupProbe:
             tcpSocket: { port: 25566 }
             initialDelaySeconds: 30
@@ -127,6 +131,8 @@ spec:
                   key: TS_AUTHKEY
             - name: TS_USERSPACE
               value: "true"
+            - name: TS_KUBE_SECRET
+              value: ""
             - name: TS_STATE_DIR
               value: "/var/lib/tailscale"
             - name: TS_HOSTNAME
@@ -137,8 +143,17 @@ spec:
             - name: tailscale-state
               mountPath: /var/lib/tailscale
           resources:
-            requests: { memory: "64Mi", cpu: "50m" }
-            limits: { memory: "128Mi", cpu: "200m" }
+            requests: { memory: "32Mi", cpu: "10m" }
+            limits: { memory: "64Mi", cpu: "100m" }
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - 'tailscale status --json | grep "\"BackendState\"" | grep -q Running'
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
 
         # ── mc-monitor（Prometheus Exporter）───────────────────
         # Prometheus -->|監視| Lobby (infrastructure.mermaid)

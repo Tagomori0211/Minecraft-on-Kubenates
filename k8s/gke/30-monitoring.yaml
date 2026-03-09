@@ -120,7 +120,7 @@ spec:
               mountPath: /prometheus/
           resources:
             requests: { memory: "512Mi", cpu: "250m" }
-            limits:   { memory: "1Gi",   cpu: "1000m" }
+            limits: { memory: "1Gi", cpu: "1000m" }
 
         # Tailscale Sidecar: オンプレ監視ターゲットへのVPN接続
         # Prometheus <--> Tailscale <--> TS_Network (infrastructure.mermaid)
@@ -134,6 +134,8 @@ spec:
                   key: TS_AUTHKEY
             - name: TS_USERSPACE
               value: "true"
+            - name: TS_KUBE_SECRET
+              value: ""
             - name: TS_STATE_DIR
               value: "/var/lib/tailscale"
             - name: TS_HOSTNAME
@@ -145,7 +147,16 @@ spec:
               mountPath: /var/lib/tailscale
           resources:
             requests: { memory: "64Mi", cpu: "50m" }
-            limits:   { memory: "128Mi", cpu: "200m" }
+            limits: { memory: "128Mi", cpu: "200m" }
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - 'tailscale status --json | grep "\"BackendState\"" | grep -q Running'
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
 
       volumes:
         - name: prometheus-config
@@ -245,14 +256,14 @@ spec:
                 secretKeyRef:
                   name: grafana-admin-secret
                   key: admin-password
-                  optional: true   # Secret未設定時はデフォルト(admin)を使用
+                  optional: true # Secret未設定時はデフォルト(admin)を使用
             - name: GF_SERVER_ROOT_URL
               value: "http://tak-grafana-gke"
             - name: GF_SERVER_HTTP_PORT
               value: "3000"
           resources:
             requests: { memory: "256Mi", cpu: "100m" }
-            limits:   { memory: "512Mi", cpu: "500m" }
+            limits: { memory: "512Mi", cpu: "500m" }
 
         # Tailscale Sidecar: 管理者が Tailscale 経由で Grafana にアクセス
         # Admin --> Tailscale接続 --> Grafana (infrastructure.mermaid)
@@ -267,6 +278,8 @@ spec:
                   key: TS_AUTHKEY
             - name: TS_USERSPACE
               value: "true"
+            - name: TS_KUBE_SECRET
+              value: ""
             - name: TS_STATE_DIR
               value: "/var/lib/tailscale"
             - name: TS_HOSTNAME
@@ -282,7 +295,16 @@ spec:
               readOnly: true
           resources:
             requests: { memory: "64Mi", cpu: "50m" }
-            limits:   { memory: "128Mi", cpu: "200m" }
+            limits: { memory: "128Mi", cpu: "200m" }
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - 'tailscale status --json | grep "\"BackendState\"" | grep -q Running'
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
 
       volumes:
         - name: tailscale-state-grafana
