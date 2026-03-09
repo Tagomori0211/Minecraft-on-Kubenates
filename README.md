@@ -53,14 +53,15 @@ graph TB
         User["一般ユーザー<br/>（ステータス閲覧）"]
     end
 
-    subgraph Sakura["さくらVPS（遊休リソース活用）"]
-        Nginx_Sakura["Nginx<br/>UDP/TCPプロキシ"]
-        TS_Sakura["Tailscale Client"]
-    end
-
-    subgraph GKE["GKE Autopilot（コントロールプレーン）"]
+    subgraph GKE["GKE Autopilot（asia-northeast1）"]
         CP["Control Plane<br/>（Googleマネージド）"]
-        Velocity["Java-Velocity<br/>（Spot Pod）"]
+
+        subgraph GW["Nginx Stream Gateway（通常Pod）"]
+            Nginx_TCP["stream: 25565/TCP<br/>→ Velocity（ClusterIP）"]
+            Nginx_UDP["stream: 19132/UDP<br/>→ Bedrock（Tailscale）"]
+        end
+
+        Velocity["Java-Velocity<br/>（通常Pod / ClusterIP）"]
         Lobby["Java-Lobby<br/>（Spot Pod）"]
         Prometheus["Prometheus<br/>（通常Pod）"]
         Grafana["Grafana<br/>（通常Pod / 管理者専用）"]
@@ -70,89 +71,107 @@ graph TB
         TS_Network["プライベートネットワーク<br/>100.x.x.x"]
     end
 
-    subgraph MinecraftServer["オンプレ：MinecraftServer（k3sノード）"]
-        Java_Survival["Java-Survival"]
-        Java_Mod["Java-Indicatory MOD"]
-        Bedrock_Server["Bedrock Server"]
-        TS_Router_Sub["Tailscale Client"]
-    end
+    subgraph Onprem["オンプレ：Ryzen 5700G / 64GB"]
+        subgraph DevShell["dev-shell VM（2Gi）"]
+            SSH["SSH 隔離環境<br/>Antigravity用"]
+        end
 
-    subgraph AppServer["オンプレ：AppServer（k3sノード）"]
-        subgraph StatusPlatform["sushiski Status Platform"]
-            Kotlin_API["Kotlin API（Ktor + gRPC Server）<br/>メトリクス集計・加工"]
-            Flutter_Web["Flutter Web（gRPC-Web Client）<br/>マイクラライクUI"]
-            Envoy["Envoy Proxy<br/>gRPC-Web → gRPC 変換"]
-            Proto["shared .proto<br/>スキーマ定義"]
-            CF_Tunnel["Cloudflare Tunnel"]
+        subgraph Worker["k3s-worker VM（58Gi）"]
+            subgraph NS_MC["namespace: minecraft"]
+                subgraph Experimental["実験的・先進的（Java）"]
+                    Java_Survival["Java-Survival<br/>16Gi Guaranteed"]
+                    Java_Industry["Java-Industry MOD<br/>30Gi Guaranteed"]
+                end
+                subgraph Conservative["保守的・安定（Bedrock）"]
+                    Bedrock_Server["Bedrock Server<br/>2Gi Guaranteed"]
+                end
+                TS_Sidecar["Tailscale sidecar<br/>256Mi"]
+            end
+
+            subgraph NS_SP["namespace: status-platform"]
+                Kotlin_API["Kotlin API（Ktor + gRPC）<br/>1Gi"]
+                Flutter_Web["Flutter Web<br/>256Mi"]
+                Envoy["Envoy Proxy<br/>256Mi"]
+                CF_Tunnel["Cloudflare Tunnel<br/>128Mi"]
+            end
         end
     end
 
-    Player_Java -->|25565/TCP| Velocity
-    Player_Bedrock -->|19132/UDP| Nginx_Sakura
+    %% --- プレイヤー接続 ---
+    Player_Java -->|"25565/TCP<br/>（GKE L4 LB）"| GW
+    Player_Bedrock -->|"19132/UDP<br/>（GKE L4 LB）"| GW
+
+    Nginx_TCP -->|"ClusterIP<br/>GKE内部通信"| Velocity
+    Nginx_UDP -->|"Tailscale経由<br/>UDP転送"| TS_Sidecar
+    TS_Sidecar -->|転送| Bedrock_Server
+
     Admin -->|Tailscale接続| Grafana
     User -->|HTTPS| CF_Tunnel
 
+    %% --- Status Platform ---
     CF_Tunnel -->|ルーティング| Flutter_Web
-    Flutter_Web -->|gRPC-Web（HTTP/1.1）| Envoy
-    Envoy -->|gRPC（HTTP/2）| Kotlin_API
+    Flutter_Web -->|"gRPC-Web（HTTP/1.1）"| Envoy
+    Envoy -->|"gRPC（HTTP/2）"| Kotlin_API
     Kotlin_API -->|PromQL / HTTP API| Prometheus
 
-    Proto -.->|コード生成| Kotlin_API
-    Proto -.->|コード生成| Flutter_Web
-
-    Nginx_Sakura -->|Tailscale経由| TS_Router_Sub
-    TS_Router_Sub -->|転送| Bedrock_Server
-
+    %% --- Tailscale メッシュ ---
     Velocity <-->|Tailscale| TS_Network
     Lobby <-->|Tailscale| TS_Network
-    TS_Sakura <-->|Tailscale| TS_Network
-    TS_Router_Sub <-->|Tailscale| TS_Network
+    GW <-->|Tailscale| TS_Network
+    TS_Sidecar <-->|Tailscale| TS_Network
     Prometheus <-->|Tailscale| TS_Network
 
+    %% --- Java サーバー転送 ---
     Velocity -->|転送| Lobby
     Velocity -->|転送| Java_Survival
-    Velocity -->|転送| Java_Mod
+    Velocity -->|転送| Java_Industry
 
+    %% --- 監視 ---
+    Prometheus -->|監視| GW
     Prometheus -->|監視| Velocity
     Prometheus -->|監視| Lobby
     Prometheus -->|監視| Java_Survival
-    Prometheus -->|監視| Java_Mod
+    Prometheus -->|監視| Java_Industry
     Prometheus -->|監視| Bedrock_Server
-    Prometheus -->|監視| Nginx_Sakura
     Prometheus -->|監視| Kotlin_API
 
     Grafana -->|可視化| Prometheus
 
-    style Nginx_Sakura fill:#ff69b4,color:#fff
     style CP fill:#4285f4,color:#fff
+    style GW fill:#00C853,color:#fff
     style Velocity fill:#34a853,color:#fff
     style Lobby fill:#fbbc04,color:#000
     style Bedrock_Server fill:#ea4335,color:#fff
+    style Java_Survival fill:#2E7D32,color:#fff
+    style Java_Industry fill:#1B5E20,color:#fff
     style Prometheus fill:#e6522c,color:#fff
     style Grafana fill:#f46800,color:#fff
     style Kotlin_API fill:#7F52FF,color:#fff
     style Flutter_Web fill:#02569B,color:#fff
     style CF_Tunnel fill:#F6821F,color:#fff
     style Envoy fill:#AC6199,color:#fff
-    style Proto fill:#999,color:#fff
+    style SSH fill:#607D8B,color:#fff
+    style TS_Sidecar fill:#555,color:#fff
+    style Experimental fill:#1a1a2e,color:#4ade80,stroke:#4ade80
+    style Conservative fill:#1a1a2e,color:#f87171,stroke:#f87171
 ```
 
 ### コンポーネント構成
 
 | レイヤー | コンポーネント | 配置 | 役割 |
 |----------|---------------|------|------|
-| **Entry (Java)** | Velocity Proxy | GKE Spot Pod | Java版プレイヤー接続受付・サーバー振り分け |
-| **Entry (Bedrock)** | Nginx (UDP Proxy) | さくらVPS | Bedrock版UDP転送 → Tailscale経由 |
+| **Entry** | Nginx Stream Gateway | GKE 通常Pod | Java/Bedrock版のトラフィック受付・ルーティング |
+| **Proxy (Java)** | Velocity Proxy | GKE 通常Pod | Java版プレイヤー接続受付・サーバー振り分け |
 | **Lobby** | Paper Server | GKE Spot Pod | 軽量ロビー（ステートレス） |
-| **Game** | Java-Survival | On-Prem (k3s) | バニラライクサバイバル (4GB) |
-| **Game** | Java-Indicatory MOD | On-Prem (k3s) | NeoForge工業MOD (8GB) |
-| **Game** | Bedrock Server | On-Prem (k3s) | Bedrock版ゲームサーバー (2GB) |
+| **Game** | Java-Survival | On-Prem k3s | バニラライクサバイバル (16GB Guaranteed) |
+| **Game** | Java-Industry MOD | On-Prem k3s | NeoForge工業MOD (30GB Guaranteed) |
+| **Game** | Bedrock Server | On-Prem k3s | Bedrock版ゲームサーバー (2GB Guaranteed) |
 | **Monitoring** | Prometheus | GKE 通常Pod | 全コンポーネント監視 |
 | **Monitoring** | Grafana | GKE 通常Pod | 管理者専用ダッシュボード（Tailscale接続） |
-| **Status** | Kotlin API | On-Prem AppServer | メトリクス集計・gRPCサービング |
-| **Status** | Flutter Web | On-Prem AppServer | マイクラライクステータスUI |
-| **Status** | Envoy Proxy | On-Prem AppServer | gRPC-Web → gRPC 変換 |
-| **Status** | Cloudflare Tunnel | On-Prem AppServer | 外部HTTPS公開 |
+| **Status** | Kotlin API | On-Prem k3s | メトリクス集計・gRPCサービング |
+| **Status** | Flutter Web | On-Prem k3s | マイクラライクステータスUI |
+| **Status** | Envoy Proxy | On-Prem k3s | gRPC-Web → gRPC 変換 |
+| **Status** | Cloudflare Tunnel | On-Prem k3s | 外部HTTPS公開 |
 | **Network** | Tailscale | 全ノード | ゼロトラストメッシュVPN |
 
 ---
@@ -175,7 +194,6 @@ graph TB
 | **Cloud NAT** | プライベートノードの外部通信 |
 | **Proxmox VE** | オンプレミス仮想化基盤 |
 | **Tailscale** | メッシュVPN（ゼロトラスト） |
-| **さくらVPS** | 遊休リソース活用 / Bedrock UDP Proxyノード |
 | **Cloudflare Tunnel** | StatusPlatform 外部公開 |
 
 ### アプリケーション
@@ -201,14 +219,14 @@ graph TB
 ```
 .
 ├── Ansible/
-│   ├── inventory.ini        # ホスト定義 (minecraft: 192.168.0.151, app: 192.168.0.150)
+│   ├── inventory.ini        # ホスト定義 (k3s-worker: 192.168.0.151)
 │   ├── install_k3s.yml      # k3s + Tailscale インストールPlaybook
-│   └── deploy_minecraft.yml # マニフェストデプロイPlaybook（ノード別）
+│   └── deploy_minecraft.yml # マニフェストデプロイPlaybook
 │
 ├── Terraform/
 │   ├── main.tf              # Terraformブロック・プロバイダ設定
 │   ├── gke.tf               # GKE Autopilot、VPC、NAT、Firewall
-│   ├── proxmox.tf           # Proxmox VM定義（MinecraftServer / AppServer）
+│   ├── proxmox.tf           # Proxmox VM定義（k3s-worker: 58Gi, 16Cores）
 │   ├── variables.tf         # 変数定義
 │   ├── output.tf            # 出力定義
 │   ├── terraform.tfvars     # 変数値
@@ -217,10 +235,10 @@ graph TB
 └── k8s/
     ├── gke/                  # GKE用マニフェスト
     │   ├── 00-namespace.yaml
-    │   ├── 01-secrets.yaml.template
-    │   ├── 02-velocity-config.yaml   # Velocity設定 (survival/mod/lobby)
-    │   ├── 10-velocity-deployment.yaml  # Velocity Spot Pod + Tailscale Sidecar
+    │   ├── 02-velocity-config.yaml      # Velocity設定 (survival/mod/lobby)
+    │   ├── 10-velocity-deployment.yaml  # Velocity 通常Pod + Tailscale Sidecar
     │   ├── 11-lobby-deployment.yaml     # Lobby Spot Pod
+    │   ├── 20-nginx-gw.yaml             # Nginx Stream Gateway (TCP/UDP)
     │   ├── 20-services.yaml             # LoadBalancer / ClusterIP
     │   └── 30-monitoring.yaml           # Prometheus + Grafana (Tailscale経由)
     │
@@ -271,19 +289,21 @@ containers:
 
 オンプレミス側の**Tailscale Subnet Router**がk3s Service CIDR（`10.43.0.0/16`）をアドバタイズし、GKEからシームレスにアクセス可能。
 
-### 3. Bedrock版対応 (さくらVPS経由)
+### 3. Nginx Stream GatewayとBedrock対応
 
 ```
-Bedrock Player --UDP 19132--> さくらVPS Nginx
-                                    |
-                              Tailscale VPN
-                                    |
-                            MinecraftServer (k3s)
-                                    |
-                             Bedrock Server Pod
+Player (Bedrock) --UDP 19132--> GKE L4 LB
+                                  |
+                        Nginx Stream Gateway (GKE)
+                                  |
+                        Tailscale VPN 経由 UDP 転送
+                                  |
+                        Tailscale Subnet Router (k3s)
+                                  |
+                        Bedrock Server Pod (k3s)
 ```
 
-遊休リソースであるさくらVPSをUDPプロキシとして活用し、追加コスト**ゼロ**でBedrock対応。
+GKEにNginx UDP/TCP Stream Gatewayを配置し、IPを統合。Bedrock版アクセスはオンプレのTailscale Router経由で透過的に転送しています。
 
 ### 4. StatusPlatform (gRPC-Web アーキテクチャ)
 
@@ -324,11 +344,26 @@ initContainers:
 ### 6. 可観測性（全コンポーネント監視）
 
 Prometheusが監視する対象：
-- GKE: Velocity, Lobby
-- オンプレ (Tailscale経由): Java-Survival, Java-Indicatory MOD, Bedrock Server, Kotlin API
-- さくらVPS (Tailscale経由): Nginx (nginx-prometheus-exporter)
+- GKE: Nginx Stream Gateway, Velocity, Lobby
+- オンプレ (Tailscale経由): Java-Survival, Java-Industry MOD, Bedrock Server, Kotlin API
 
 Grafanaは管理者専用。Tailscale経由（`tak-grafana-gke`ホスト名）でのみアクセス可能。
+
+### 7. オンプレミス リソース構成
+
+```mermaid
+pie title "k3s-worker VM 内訳（58Gi）"
+    "Java-Industry MOD (30Gi)" : 30
+    "Java-Survival (16Gi)" : 16
+    "Bedrock Server (2Gi)" : 2
+    "Kotlin API (1Gi)" : 1
+    "Tailscale sidecar (256Mi)" : 0.25
+    "Flutter Web (256Mi)" : 0.25
+    "Envoy (256Mi)" : 0.25
+    "CF Tunnel (128Mi)" : 0.125
+    "kube-system (~1.5Gi)" : 1.5
+    "残バッファ (6.6Gi)" : 6.6
+```
 
 ---
 
@@ -363,17 +398,9 @@ terraform apply -var-file="secret.tfvars"
 ```bash
 cd Ansible
 
-# k3s + Tailscale インストール
+# .env に TAILSCALE_AUTH_KEY を記載しておくこと
+# k3s インストールと Tailscale 自動認証
 ansible-playbook -i inventory.ini install_k3s.yml
-
-# Tailscale認証（各サーバーで手動実行）
-# MinecraftServer:
-ssh 192.168.0.151
-sudo tailscale up --authkey=<TS_AUTHKEY> --hostname=tak-onprem-mc --advertise-routes=10.43.0.0/16
-
-# AppServer:
-ssh 192.168.0.150
-sudo tailscale up --authkey=<TS_AUTHKEY> --hostname=tak-onprem-app
 ```
 
 ### 3. GKEマニフェスト適用
@@ -404,7 +431,7 @@ kubectl apply -f k8s/gke/
 ```bash
 cd Ansible
 
-# MinecraftServer (Survival / Mod / Bedrock) + AppServer (StatusPlatform)
+# k3s-worker node へのデプロイ
 ansible-playbook -i inventory.ini deploy_minecraft.yml
 ```
 
