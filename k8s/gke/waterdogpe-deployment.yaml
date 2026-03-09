@@ -17,6 +17,22 @@ spec:
       labels:
         app: waterdogpe
     spec:
+      # ── Init: Writable Config ────────────────────────────────
+      initContainers:
+        - name: init-waterdog-config
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              cp /tmp/config.yml /waterdog-data/config.yml
+              chmod 666 /waterdog-data/config.yml
+          volumeMounts:
+            - name: config-readonly
+              mountPath: /tmp/config.yml
+              subPath: config.yml
+            - name: waterdog-data
+              mountPath: /waterdog-data
+
       containers:
         - name: waterdogpe
           # Note: ghcr.io/waterdogpe/waterdogpe:latest is the official image if it exists.
@@ -34,8 +50,8 @@ spec:
               cpu: "500m"
               memory: "1024Mi"
           volumeMounts:
-            - name: config
-              mountPath: /opt/waterdogpe/config.yml
+            - name: waterdog-data
+              mountPath: /home/config.yml
               subPath: config.yml
           # Generic Java/process probes as per migration guide
           readinessProbe:
@@ -77,8 +93,10 @@ spec:
               mountPath: /var/lib/tailscale
 
       volumes:
-        - name: config
+        - name: config-readonly
           configMap:
             name: waterdogpe-config
+        - name: waterdog-data
+          emptyDir: {}
         - name: tailscale-state
           emptyDir: {}
