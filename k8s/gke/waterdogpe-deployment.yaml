@@ -63,39 +63,9 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 15
 
-        # --- Tailscale Sidecar (Userspace mode) ---
-        - name: tailscale
-          image: tailscale/tailscale:latest
-          env:
-            - name: TS_AUTHKEY
-              valueFrom:
-                secretKeyRef:
-                  name: tailscale-auth
-                  key: TS_AUTHKEY
-            - name: TS_USERSPACE
-              value: "true"
-            - name: TS_KUBE_SECRET
-              value: ""
-            - name: TS_STATE_DIR
-              value: "/var/lib/tailscale"
-            - name: TS_HOSTNAME
-              value: tak-waterdog-gke
-          resources:
-            requests:
-              cpu: "50m"
-              memory: "64Mi"
-            limits:
-              cpu: "100m"
-              memory: "128Mi"
-          volumeMounts:
-            - name: tailscale-state
-              mountPath: /var/lib/tailscale
-
       volumes:
         - name: config-readonly
           configMap:
             name: waterdogpe-config
         - name: waterdog-data
-          emptyDir: {}
-        - name: tailscale-state
           emptyDir: {}

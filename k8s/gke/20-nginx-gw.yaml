@@ -74,40 +74,10 @@ spec:
             requests: { memory: "128Mi", cpu: "100m" }
             limits: { memory: "256Mi", cpu: "500m" }
 
-        # Tailscale Sidecar: オンプレミス側 Bedrock サーバーへの UDP 転送用
-        - name: tailscale
-          image: tailscale/tailscale:latest
-          env:
-            - name: TS_AUTHKEY
-              valueFrom:
-                secretKeyRef:
-                  name: tailscale-auth
-                  key: TS_AUTHKEY
-            - name: TS_USERSPACE
-              value: "true"
-            - name: TS_KUBE_SECRET
-              value: ""
-            - name: TS_STATE_DIR
-              value: "/var/lib/tailscale"
-            - name: TS_HOSTNAME
-              value: "tak-gw-gke"
-          volumeMounts:
-            - name: tailscale-state
-              mountPath: /var/lib/tailscale
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "tailscale logout"]
-          resources:
-            requests: { memory: "64Mi", cpu: "50m" }
-            limits: { memory: "128Mi", cpu: "200m" }
-
       volumes:
         - name: config
           configMap:
             name: nginx-gw-config
-        - name: tailscale-state
-          emptyDir: {}
 
 ---
 apiVersion: v1

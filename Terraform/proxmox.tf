@@ -23,7 +23,7 @@ resource "proxmox_vm_qemu" "server_vms" {
   # ★ ディスク設定
   disk {
     slot    = "scsi0"
-    size    = each.value.disk_size  # 例: "32G"
+    size    = each.value.disk_size # 例: "32G"
     storage = "local-lvm"
     type    = "disk"
   }
@@ -41,7 +41,7 @@ resource "proxmox_vm_qemu" "server_vms" {
     model  = "virtio"
     bridge = "vmbr0"
   }
- #  シリアルコンソール設定
+  #  シリアルコンソール設定
   serial {
     id   = 0
     type = "socket"
@@ -56,7 +56,7 @@ resource "proxmox_vm_qemu" "server_vms" {
   os_type   = "cloud-init"
   ipconfig0 = "ip=${each.value.ip}/24,gw=${var.common_config.gateway}"
   ciuser    = "shinari"
-  sshkeys    = var.ssh_public_key
+  sshkeys   = var.ssh_public_key
 
   # ★ qemu-guest-agent有効化
   agent = 1
@@ -64,7 +64,7 @@ resource "proxmox_vm_qemu" "server_vms" {
   # 起動待機（Cloud-Init完了まで）
   lifecycle {
     ignore_changes = [
-      disk,  # ディスクリサイズ後の差分を無視
+      disk, # ディスクリサイズ後の差分を無視
     ]
   }
 }

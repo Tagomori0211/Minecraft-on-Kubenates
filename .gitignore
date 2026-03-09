@@ -233,3 +233,4 @@ crash.log
 #k3s secret
 secret.yaml
 *-secret.yaml\n# Temporary k8s/secret files\nk8s/gke/gke_*\nk8s/gke/onprem_kubeconfig.yaml\nk8s/onprem/onprem_*\n
+*Task_mds

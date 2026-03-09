@@ -105,46 +105,6 @@ spec:
             periodSeconds: 10
             failureThreshold: 3
 
-        # ── Tailscale Sidecar ───────────────────────────────────
-        # オンプレの Survival / Mod サーバーへの VPN 接続
-        - name: tailscale
-          image: tailscale/tailscale:latest
-          env:
-            - name: TS_AUTHKEY
-              valueFrom:
-                secretKeyRef:
-                  name: tailscale-auth
-                  key: TS_AUTHKEY
-            - name: TS_USERSPACE
-              value: "true" # GKE Autopilot はカーネルモード不可
-            - name: TS_KUBE_SECRET
-              value: ""
-            - name: TS_STATE_DIR
-              value: "/var/lib/tailscale"
-            - name: TS_HOSTNAME
-              value: "tak-velocity-gke"
-            - name: TS_EXTRA_ARGS
-              value: "--accept-routes"
-          volumeMounts:
-            - name: tailscale-state
-              mountPath: /var/lib/tailscale
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "tailscale logout"]
-          resources:
-            requests: { memory: "32Mi", cpu: "10m" }
-            limits: { memory: "64Mi", cpu: "100m" }
-          readinessProbe:
-            exec:
-              command:
-                - /bin/sh
-                - -c
-                - 'tailscale status --json | grep "\"BackendState\"" | grep -q Running'
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            failureThreshold: 6
-
         # ── mc-monitor（Prometheus Exporter）───────────────────
         # Prometheus -->|監視| Velocity (infrastructure.mermaid)
         - name: mc-monitor
@@ -165,6 +125,4 @@ spec:
           configMap:
             name: velocity-config
         - name: velocity-data
-          emptyDir: {}
-        - name: tailscale-state
           emptyDir: {}

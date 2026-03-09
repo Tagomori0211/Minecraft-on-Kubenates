@@ -58,7 +58,7 @@ locals {
   common_labels = {
     "app-part-of" = "tak-pipeline"
     "environment" = var.environment
-    "managed-by"                = "terraform"
+    "managed-by"  = "terraform"
   }
 
   # Tailscale UDP port

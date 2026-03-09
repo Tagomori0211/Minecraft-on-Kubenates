@@ -1,99 +1,96 @@
 graph TB
     subgraph Internet["インターネット"]
+        direction LR
         Player_Java["Java版プレイヤー"]
         Player_Bedrock["Bedrock版プレイヤー"]
-        Admin["管理者（外部）"]
         User["一般ユーザー<br/>（ステータス閲覧）"]
+        Admin["管理者（外部）"]
     end
 
-    subgraph GKE["GKE Autopilot（asia-northeast1）"]
-        CP["Control Plane<br/>（Googleマネージド）"]
+    subgraph GCP["Google Cloud (asia-northeast1)"]
+        subgraph GKE["GKE Autopilot"]
+            direction LR
+            subgraph GamePods["ゲームプロキシ層"]
+                direction TB
+                subgraph GW["Nginx Stream Gateway（通常Pod）"]
+                    Nginx_TCP["stream: 25565/TCP"]
+                end
+                WaterdogPE["WaterdogPE（通常Pod）<br/>RakNet Native / UDP 19132"]
+                Velocity["Velocity（通常Pod / ClusterIP）"]
+                Lobby["Lobby（Spot Pod）"]
+            end
 
-        subgraph GW["Nginx Stream Gateway（通常Pod）"]
-            Nginx_TCP["stream: 25565/TCP<br/>→ Velocity（ClusterIP）"]
+            subgraph MonPods["監視層"]
+                direction TB
+                Prometheus["Prometheus（通常Pod）"]
+                Grafana["Grafana（通常Pod）"]
+            end
         end
 
-        WaterdogPE["WaterdogPE<br/>（通常Pod / UDP 19132）<br/>RakNet Native Proxy"]
-
-        Velocity["Java-Velocity<br/>（通常Pod / ClusterIP）"]
-        Lobby["Java-Lobby<br/>（Spot Pod）"]
-        Prometheus["Prometheus<br/>（通常Pod）"]
-        Grafana["Grafana<br/>（通常Pod / 管理者専用）"]
+        SubnetRouter["tailscale-subnet-router<br/>e2-micro / VPC Route 100.64.0.0/10"]
     end
 
-    subgraph Tailscale["Tailscale VPN"]
-        TS_Network["プライベートネットワーク<br/>100.x.x.x"]
+    subgraph TS["Tailscale VPN（100.x.x.x）"]
+        TS_Network[" "]
     end
 
     subgraph Onprem["オンプレ：Ryzen 5700G / 64GB"]
-        subgraph DevShell["dev-shell VM（2Gi）"]
-            SSH["SSH 隔離環境<br/>Antigravity用"]
-        end
-
+        direction LR
         subgraph Worker["k3s-worker VM（58Gi）"]
-            subgraph NS_MC["namespace: minecraft"]
+            TS_K3s["Tailscale Client"]
+
+            subgraph GameServers["ゲームサーバー"]
+                direction LR
                 subgraph Experimental["実験的・先進的（Java）"]
                     Java_Survival["Java-Survival<br/>16Gi Guaranteed"]
                     Java_Industry["Java-Industry MOD<br/>30Gi Guaranteed"]
                 end
                 subgraph Conservative["保守的・安定（Bedrock）"]
-                    Bedrock_Server["Bedrock Server<br/>2Gi Guaranteed<br/>xbox-auth=off"]
+                    Bedrock_Server["Bedrock Server<br/>2Gi Guaranteed"]
                 end
-                TS_Sidecar["Tailscale Client"]
             end
 
-            subgraph NS_SP["namespace: status-platform"]
-                Kotlin_API["Kotlin API（Ktor + gRPC）<br/>1Gi"]
-                Flutter_Web["Flutter Web<br/>256Mi"]
-                Envoy["Envoy Proxy<br/>256Mi"]
-                CF_Tunnel["Cloudflare Tunnel<br/>128Mi"]
+            subgraph NS_SP["Status Platform"]
+                direction LR
+                Kotlin_API["Kotlin API<br/>（Ktor + gRPC）"]
+                Flutter_Web["Flutter Web"]
+                Envoy["Envoy Proxy"]
+                CF_Tunnel["CF Tunnel"]
             end
         end
+
+        DevShell["dev-shell VM（2Gi）<br/>SSH 隔離環境"]
     end
 
-    %% --- プレイヤー接続 ---
-    Player_Java -->|"25565/TCP<br/>（GKE L4 LB）"| GW
-    Player_Bedrock -->|"19132/UDP<br/>（GKE L4 LB）"| WaterdogPE
+    %% === ゲームトラフィック（実線） ===
+    Player_Java -->|"25565/TCP"| GW
+    Player_Bedrock -->|"19132/UDP"| WaterdogPE
+    Nginx_TCP --> Velocity
+    Velocity --> Lobby
 
-    Nginx_TCP -->|"ClusterIP<br/>GKE内部通信"| Velocity
-    WaterdogPE -->|"Tailscale経由<br/>RakNet転送"| TS_Sidecar
-    TS_Sidecar -->|転送| Bedrock_Server
+    %% === VPC → Subnet Router → Tailscale → オンプレ ===
+    Velocity -->|VPC Route| SubnetRouter
+    WaterdogPE -->|VPC Route| SubnetRouter
+    SubnetRouter <-->|Tailscale Tunnel| TS_Network
+    TS_Network <--> TS_K3s
+    TS_K3s --> Java_Survival
+    TS_K3s --> Java_Industry
+    TS_K3s --> Bedrock_Server
 
-    Admin -->|Tailscale接続| Grafana
+    %% === Status Platform（右側フロー） ===
     User -->|HTTPS| CF_Tunnel
+    CF_Tunnel --> Flutter_Web
+    Flutter_Web --> Envoy
+    Envoy --> Kotlin_API
+    Kotlin_API -->|PromQL| Prometheus
 
-    %% --- Status Platform ---
-    CF_Tunnel -->|ルーティング| Flutter_Web
-    Flutter_Web -->|"gRPC-Web（HTTP/1.1）"| Envoy
-    Envoy -->|"gRPC（HTTP/2）"| Kotlin_API
-    Kotlin_API -->|PromQL / HTTP API| Prometheus
+    %% === 管理者 ===
+    Admin -->|Tailscale| Grafana
 
-    %% --- Tailscale メッシュ ---
-    Velocity <-->|Tailscale| TS_Network
-    Lobby <-->|Tailscale| TS_Network
-    GW <-->|Tailscale| TS_Network
-    WaterdogPE <-->|Tailscale| TS_Network
-    TS_Sidecar <-->|Tailscale| TS_Network
-    Prometheus <-->|Tailscale| TS_Network
+    %% === 監視（点線で視覚分離） ===
+    Prometheus -.->|VPC Route| SubnetRouter
+    Grafana -.-> Prometheus
 
-    %% --- Java サーバー転送 ---
-    Velocity -->|転送| Lobby
-    Velocity -->|転送| Java_Survival
-    Velocity -->|転送| Java_Industry
-
-    %% --- 監視 ---
-    Prometheus -->|監視| GW
-    Prometheus -->|監視| WaterdogPE
-    Prometheus -->|監視| Velocity
-    Prometheus -->|監視| Lobby
-    Prometheus -->|監視| Java_Survival
-    Prometheus -->|監視| Java_Industry
-    Prometheus -->|監視| Bedrock_Server
-    Prometheus -->|監視| Kotlin_API
-
-    Grafana -->|可視化| Prometheus
-
-    style CP fill:#4285f4,color:#fff
     style GW fill:#00C853,color:#fff
     style WaterdogPE fill:#00BFA5,color:#fff
     style Velocity fill:#34a853,color:#fff
@@ -107,7 +104,12 @@ graph TB
     style Flutter_Web fill:#02569B,color:#fff
     style CF_Tunnel fill:#F6821F,color:#fff
     style Envoy fill:#AC6199,color:#fff
-    style SSH fill:#607D8B,color:#fff
-    style TS_Sidecar fill:#555,color:#fff
+    style SubnetRouter fill:#8B5CF6,color:#fff
+    style TS_K3s fill:#555,color:#fff
+    style TS_Network fill:#333,color:#fff
+    style DevShell fill:#607D8B,color:#fff
     style Experimental fill:#1a1a2e,color:#4ade80,stroke:#4ade80
     style Conservative fill:#1a1a2e,color:#f87171,stroke:#f87171
+    style GamePods fill:#0d1117,color:#c9d1d9,stroke:#30363d
+    style MonPods fill:#0d1117,color:#c9d1d9,stroke:#30363d
+    style GameServers fill:#0d1117,color:#c9d1d9,stroke:#30363d
