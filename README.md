@@ -519,9 +519,9 @@ MIT License - 詳細は [LICENSE](LICENSE) を参照
 
 ## 👤 Author
 
-**HN:田籠 (Tagomori)**
+**HN:田籠 勇吉 (Tagomori Yukichi)**
 
-- GitHub: [@tagomori1102](https://github.com/tagomori1102)
+- GitHub: [@tagomori0211](https://github.com/tagomori0211)
 - Portfolio: インフラエンジニア / SRE志望
 
 ---

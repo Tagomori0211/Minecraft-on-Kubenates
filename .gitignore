@@ -180,6 +180,11 @@ sushiski-infra-context.md
 architecture/roadmap.mermaid
 *.png
 
+# GKE / Cloud Secrets
+**/*_gcloud_auth_plugin_cache
+**/*_secret.yaml
+onprem_kubeconfig.yaml
+
 # Abstra
 # Abstra is an AI-powered process automation framework.
 # Ignore directories containing user credentials, local state, and settings.
