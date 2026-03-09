@@ -6,7 +6,7 @@ graph TB
         User["一般ユーザー<br/>（ステータス閲覧）"]
     end
 
-    subgraph GKE["GKE Autopilot（コントロールプレーン）"]
+    subgraph GKE["GKE Autopilot（asia-northeast1）"]
         CP["Control Plane<br/>（Googleマネージド）"]
 
         subgraph GW["Nginx Stream Gateway（通常Pod）"]
@@ -14,7 +14,7 @@ graph TB
             Nginx_UDP["stream: 19132/UDP<br/>→ Bedrock（Tailscale）"]
         end
 
-        Velocity["Java-Velocity<br/>（Spot Pod / ClusterIP）"]
+        Velocity["Java-Velocity<br/>（通常Pod / ClusterIP）"]
         Lobby["Java-Lobby<br/>（Spot Pod）"]
         Prometheus["Prometheus<br/>（通常Pod）"]
         Grafana["Grafana<br/>（通常Pod / 管理者専用）"]
@@ -24,20 +24,29 @@ graph TB
         TS_Network["プライベートネットワーク<br/>100.x.x.x"]
     end
 
-    subgraph MinecraftServer["オンプレ：MinecraftServer（k3sノード）"]
-        Java_Survival["Java-Survival"]
-        Java_Mod["Java-Indicatory MOD"]
-        Bedrock_Server["Bedrock Server"]
-        TS_Router_MC["Tailscale Client"]
-    end
+    subgraph Onprem["オンプレ：Ryzen 5700G / 64GB"]
+        subgraph DevShell["dev-shell VM（2Gi）"]
+            SSH["SSH 隔離環境<br/>Antigravity用"]
+        end
 
-    subgraph AppServer["オンプレ：AppServer（k3sノード）"]
-        subgraph StatusPlatform["sushiski Status Platform"]
-            Kotlin_API["Kotlin API（Ktor + gRPC Server）<br/>メトリクス集計・加工"]
-            Flutter_Web["Flutter Web（gRPC-Web Client）<br/>マイクラライクUI"]
-            Envoy["Envoy Proxy<br/>gRPC-Web → gRPC 変換"]
-            Proto["shared .proto<br/>スキーマ定義"]
-            CF_Tunnel["Cloudflare Tunnel"]
+        subgraph Worker["k3s-worker VM（58Gi）"]
+            subgraph NS_MC["namespace: minecraft"]
+                subgraph Experimental["実験的・先進的（Java）"]
+                    Java_Survival["Java-Survival<br/>16Gi Guaranteed"]
+                    Java_Industry["Java-Industry MOD<br/>30Gi Guaranteed"]
+                end
+                subgraph Conservative["保守的・安定（Bedrock）"]
+                    Bedrock_Server["Bedrock Server<br/>2Gi Guaranteed"]
+                end
+                TS_Sidecar["Tailscale sidecar<br/>256Mi"]
+            end
+
+            subgraph NS_SP["namespace: status-platform"]
+                Kotlin_API["Kotlin API（Ktor + gRPC）<br/>1Gi"]
+                Flutter_Web["Flutter Web<br/>256Mi"]
+                Envoy["Envoy Proxy<br/>256Mi"]
+                CF_Tunnel["Cloudflare Tunnel<br/>128Mi"]
+            end
         end
     end
 
@@ -46,8 +55,8 @@ graph TB
     Player_Bedrock -->|"19132/UDP<br/>（GKE L4 LB）"| GW
 
     Nginx_TCP -->|"ClusterIP<br/>GKE内部通信"| Velocity
-    Nginx_UDP -->|"Tailscale経由<br/>UDP転送"| TS_Router_MC
-    TS_Router_MC -->|転送| Bedrock_Server
+    Nginx_UDP -->|"Tailscale経由<br/>UDP転送"| TS_Sidecar
+    TS_Sidecar -->|転送| Bedrock_Server
 
     Admin -->|Tailscale接続| Grafana
     User -->|HTTPS| CF_Tunnel
@@ -58,27 +67,24 @@ graph TB
     Envoy -->|"gRPC（HTTP/2）"| Kotlin_API
     Kotlin_API -->|PromQL / HTTP API| Prometheus
 
-    Proto -.->|コード生成| Kotlin_API
-    Proto -.->|コード生成| Flutter_Web
-
     %% --- Tailscale メッシュ ---
     Velocity <-->|Tailscale| TS_Network
     Lobby <-->|Tailscale| TS_Network
     GW <-->|Tailscale| TS_Network
-    TS_Router_MC <-->|Tailscale| TS_Network
+    TS_Sidecar <-->|Tailscale| TS_Network
     Prometheus <-->|Tailscale| TS_Network
 
     %% --- Java サーバー転送 ---
     Velocity -->|転送| Lobby
     Velocity -->|転送| Java_Survival
-    Velocity -->|転送| Java_Mod
+    Velocity -->|転送| Java_Industry
 
     %% --- 監視 ---
     Prometheus -->|監視| GW
     Prometheus -->|監視| Velocity
     Prometheus -->|監視| Lobby
     Prometheus -->|監視| Java_Survival
-    Prometheus -->|監視| Java_Mod
+    Prometheus -->|監視| Java_Industry
     Prometheus -->|監視| Bedrock_Server
     Prometheus -->|監視| Kotlin_API
 
@@ -89,10 +95,15 @@ graph TB
     style Velocity fill:#34a853,color:#fff
     style Lobby fill:#fbbc04,color:#000
     style Bedrock_Server fill:#ea4335,color:#fff
+    style Java_Survival fill:#2E7D32,color:#fff
+    style Java_Industry fill:#1B5E20,color:#fff
     style Prometheus fill:#e6522c,color:#fff
     style Grafana fill:#f46800,color:#fff
     style Kotlin_API fill:#7F52FF,color:#fff
     style Flutter_Web fill:#02569B,color:#fff
     style CF_Tunnel fill:#F6821F,color:#fff
     style Envoy fill:#AC6199,color:#fff
-    style Proto fill:#999,color:#fff
+    style SSH fill:#607D8B,color:#fff
+    style TS_Sidecar fill:#555,color:#fff
+    style Experimental fill:#1a1a2e,color:#4ade80,stroke:#4ade80
+    style Conservative fill:#1a1a2e,color:#f87171,stroke:#f87171

@@ -117,11 +117,11 @@ spec:
             - { name: EULA, value: "TRUE" }
             - { name: TYPE, value: "PAPER" }
             - { name: VERSION, value: "1.21.4" }
-            - { name: MEMORY, value: "4G" }
+            - { name: MEMORY, value: "16G" }
             - { name: ONLINE_MODE, value: "FALSE" }
             - { name: ENABLE_QUERY, value: "true" }
             - name: JVM_XX_OPTS
-              value: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=8M"
+              value: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16M -XX:G1ReservePercent=20"
           ports:
             - containerPort: 25565
               name: minecraft
@@ -129,8 +129,8 @@ spec:
             - mountPath: /data
               name: data
           resources:
-            requests: { memory: "4Gi", cpu: "1000m" }
-            limits: { memory: "4.5Gi", cpu: "3000m" }
+            requests: { memory: "16Gi", cpu: "2000m" }
+            limits: { memory: "16Gi", cpu: "2000m" }
           startupProbe:
             tcpSocket: { port: 25565 }
             initialDelaySeconds: 30
@@ -243,7 +243,7 @@ spec:
             - { name: TYPE, value: "NEOFORGE" }
             - { name: VERSION, value: "1.20.4" }
             - { name: NEOFORGE_VERSION, value: "20.4.237" }
-            - { name: MEMORY, value: "8G" }
+            - { name: MEMORY, value: "30G" }
             - { name: ONLINE_MODE, value: "FALSE" }
             - { name: ENABLE_QUERY, value: "true" }
             - { name: MAX_TICK_TIME, value: "120000" }
@@ -254,19 +254,12 @@ spec:
                 -XX:+UseG1GC
                 -XX:+ParallelRefProcEnabled
                 -XX:MaxGCPauseMillis=200
+                -XX:G1HeapRegionSize=32M
+                -XX:G1ReservePercent=20
                 -XX:+UnlockExperimentalVMOptions
-                -XX:+DisableExplicitGC
+                -XX:G1MixedGCCountTarget=4
                 -XX:G1NewSizePercent=30
                 -XX:G1MaxNewSizePercent=40
-                -XX:G1HeapRegionSize=16M
-                -XX:G1ReservePercent=20
-                -XX:G1MixedGCCountTarget=4
-                -XX:InitiatingHeapOccupancyPercent=15
-                -XX:G1MixedGCLiveThresholdPercent=90
-                -XX:G1RSetUpdatingPauseTimePercent=5
-                -XX:SurvivorRatio=32
-                -XX:+PerfDisableSharedMem
-                -XX:MaxTenuringThreshold=1
           ports:
             - containerPort: 25565
               name: minecraft
@@ -274,8 +267,8 @@ spec:
             - mountPath: /data
               name: data
           resources:
-            requests: { memory: "8Gi", cpu: "2000m" }
-            limits: { memory: "10Gi", cpu: "4000m" }
+            requests: { memory: "30Gi", cpu: "4000m" }
+            limits: { memory: "30Gi", cpu: "4000m" }
           startupProbe:
             tcpSocket: { port: 25565 }
             initialDelaySeconds: 120
@@ -436,12 +429,9 @@ spec:
         # --edition bedrock で UDP 19132 に問い合わせてメトリクスを :8080 で公開
         - name: mc-monitor
           image: itzg/mc-monitor:latest
-          args:
-            - "export-for-prometheus"
-            - "--edition"
-            - "bedrock"
+          args: ["export-for-prometheus"]
           env:
-            - { name: EXPORT_SERVERS, value: "localhost:19132" }
+            - { name: EXPORT_BEDROCK_SERVERS, value: "localhost:19132" }
             - { name: DEBUG, value: "false" }
           ports:
             - containerPort: 8080
@@ -538,12 +528,10 @@ spec:
             - name: TS_STATE_DIR
               value: "/var/lib/tailscale"
             - name: TS_HOSTNAME
-              value: "tak-onprem-mc"
+              value: "tak-onprem-k8s-router"
             # k3s Service CIDR を Tailscale ネットワークに広告
             - name: TS_ROUTES
               value: "10.43.0.0/16"
-            - name: TS_EXTRA_ARGS
-              value: "--advertise-routes=10.43.0.0/16 --accept-dns=false"
           volumeMounts:
             - name: tailscale-state
               mountPath: /var/lib/tailscale

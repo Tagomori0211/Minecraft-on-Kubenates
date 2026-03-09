@@ -35,14 +35,7 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
-      # ── Spot Pod（コスト最優先）──────────────────────────────
-      nodeSelector:
-        cloud.google.com/gke-spot: "true"
       tolerations:
-        - key: "cloud.google.com/gke-spot"
-          operator: "Equal"
-          value: "true"
-          effect: "NoSchedule"
         - key: "node.kubernetes.io/memory-pressure"
           operator: "Exists"
           effect: "NoSchedule"

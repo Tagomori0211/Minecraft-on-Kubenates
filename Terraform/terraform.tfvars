@@ -16,24 +16,14 @@ common_config = {
 
 # VMリスト
 vms = {
-  # 1台目: オンプレ：AppServer (k3sノード / 将来拡張および監視・ルーターノード)
-  "AppServer" = {
-    vmid   = 103
-    desc   = "K3s Node for Main Services (Infrastructure/Router)"
-    cores  = 4
-    memory = 8192          # 8GB = 8192MB
-    ip     = "192.168.0.150"
-    disk_size = "100G"
-  },
-
-  # 2台目: オンプレ：MinecraftServer (k3sノード / Java/Bedrock マイクラゲームサーバー用)
-  "MinecraftServer" = {
-    vmid   = 104
-    desc   = "K3s Node for Minecraft Game Servers (Survival, Mod, Bedrock)"
+  # シングルノード: オンプレ：k3s-worker (Java/Bedrock マイクラゲームサーバー用 + Status Platform)
+  "k3s-worker" = {
+    vmid   = 105
+    desc   = "Single K3s Node for all services (Minecraft + Infrastructure)"
     cores  = 16            # 16コア
-    memory = 24576         # 24GiB
-    ip     = "192.168.0.151"
-    disk_size = "200G"
+    memory = 59392         # 58GiB (58 * 1024 = 59392MB)
+    ip     = "192.168.0.151" # 既存のMinecraftServerのIPを引き継ぐ
+    disk_size = "200G"     # 十分なディスクサイズ
   }
 }
 

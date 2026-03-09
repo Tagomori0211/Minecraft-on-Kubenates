@@ -11,11 +11,10 @@
 # ============================================================
 
 - name: Install k3s and Tailscale
-  hosts: minecraft,app
+  hosts: minecraft
   become: yes
 
   tasks:
-
     # ── 前準備 ─────────────────────────────────────────────
     - name: Update apt cache
       apt:
@@ -33,7 +32,7 @@
     - name: Install k3s (single-node server)
       shell: curl -sfL https://get.k3s.io | sh -
       args:
-        creates: /usr/local/bin/k3s   # 存在すればスキップ（冪等性）
+        creates: /usr/local/bin/k3s # 存在すればスキップ（冪等性）
 
     - name: Ensure k3s service is running
       systemd:
@@ -45,7 +44,7 @@
     - name: Install Tailscale
       shell: curl -fsSL https://tailscale.com/install.sh | sh
       args:
-        creates: /usr/bin/tailscale   # 存在すればスキップ
+        creates: /usr/bin/tailscale # 存在すればスキップ
 
     - name: Ensure tailscaled service is running
       systemd:
@@ -53,26 +52,14 @@
         state: started
         enabled: yes
 
-    # ── Tailscale 認証（ノード別に手動実行）────────────────
-    # tailscale up は --advertise-routes のオプションが異なるため
-    # 自動化せず手動で実行する（認証は一度だけ必要）
-    - name: Show Tailscale auth instructions
-      debug:
-        msg: |
-          =====================================================
-          [Tailscale] 認証が必要です。各サーバーで実行してください:
-
-          MinecraftServer (192.168.0.151):
-            sudo tailscale up \
-              --authkey=<TS_AUTHKEY> \
-              --hostname=tak-onprem-mc \
-              --advertise-routes=10.43.0.0/16
-
-          AppServer (192.168.0.150):
-            sudo tailscale up \
-              --authkey=<TS_AUTHKEY> \
-              --hostname=tak-onprem-app
-
-          ※ Tailscale管理画面でサブネットルートを承認すること
-          =====================================================
-      when: inventory_hostname in groups['minecraft'] or inventory_hostname in groups['app']
+    # ── Tailscale 認証（自動化）────────────────
+    - name: Authenticate Tailscale
+      shell: |
+        tailscale up \
+          --authkey="{{ lookup('env', 'TAILSCALE_AUTH_KEY') }}" \
+          --hostname=tak-onprem-mc \
+          --advertise-routes=10.43.0.0/16 \
+          --accept-routes=true
+      args:
+        # tailscale status で認証済みか確認し、未認証なら実行
+        creates: /var/lib/tailscale/tailscaled.state

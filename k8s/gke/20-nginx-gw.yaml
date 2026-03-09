@@ -1,0 +1,147 @@
+# ============================================================
+# TAK Pipeline - Nginx Stream Gateway (GKE)
+# ============================================================
+# プレイヤー入口（L4 LB）
+# TCP 25565 --> Velocity (Java)
+# UDP 19132 --> Bedrock (On-prem)
+# ============================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-gw-config
+  namespace: minecraft
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+    }
+
+    stream {
+        # Tailscale MagicDNS を解決するためのリゾルバ
+        resolver 100.100.100.100 valid=10s;
+
+        server {
+            listen 25565;
+            # 変数を使用して解決を遅延
+            set $velocity_backend velocity.minecraft.svc.cluster.local:25577;
+            proxy_pass $velocity_backend;
+            proxy_timeout 10m;
+            proxy_connect_timeout 30s;
+        }
+
+        server {
+            listen 19132 udp;
+            # 変数を使用して解決を遅延（Tailscale MagicDNS 待ち）
+            set $bedrock_backend tak-onprem-mc:19132;
+            proxy_pass $bedrock_backend;
+            proxy_timeout 1m;
+            proxy_responses 1;
+        }
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-gw
+  namespace: minecraft
+  labels:
+    app: nginx-gw
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-gw
+  template:
+    metadata:
+      labels:
+        app: nginx-gw
+    spec:
+      # 通常Podとして構成（Spot不使用）
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: nginx
+          image: nginx:stable-alpine
+          ports:
+            - containerPort: 25565
+              name: minecraft
+              protocol: TCP
+            - containerPort: 19132
+              name: bedrock
+              protocol: UDP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+          resources:
+            requests: { memory: "128Mi", cpu: "100m" }
+            limits: { memory: "256Mi", cpu: "500m" }
+
+        # Tailscale Sidecar: オンプレミス側 Bedrock サーバーへの UDP 転送用
+        - name: tailscale
+          image: tailscale/tailscale:latest
+          env:
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_USERSPACE
+              value: "true"
+            - name: TS_KUBE_SECRET
+              value: ""
+            - name: TS_STATE_DIR
+              value: "/var/lib/tailscale"
+            - name: TS_HOSTNAME
+              value: "tak-gw-gke"
+          volumeMounts:
+            - name: tailscale-state
+              mountPath: /var/lib/tailscale
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "tailscale logout"]
+          resources:
+            requests: { memory: "64Mi", cpu: "50m" }
+            limits: { memory: "128Mi", cpu: "200m" }
+
+      volumes:
+        - name: config
+          configMap:
+            name: nginx-gw-config
+        - name: tailscale-state
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-gw-lb
+  namespace: minecraft
+  labels:
+    app: nginx-gw
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    app: nginx-gw
+  ports:
+    - name: minecraft
+      port: 25565
+      targetPort: 25565
+      protocol: TCP
+    - name: bedrock
+      port: 19132
+      targetPort: 19132
+      protocol: UDP

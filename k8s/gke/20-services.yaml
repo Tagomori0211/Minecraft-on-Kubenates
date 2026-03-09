@@ -7,28 +7,7 @@
 # Velocity LoadBalancer（外部公開 / Java版プレイヤー入口）
 # ============================================================
 # Player_Java -->|25565/TCP| Velocity (infrastructure.mermaid)
-apiVersion: v1
-kind: Service
-metadata:
-  name: velocity-lb
-  namespace: minecraft
-  labels:
-    app: velocity
-    app.kubernetes.io/component: proxy
-    app.kubernetes.io/part-of: tak-pipeline
-  annotations:
-    # Terraformで作成した固定IPを使用する場合はコメントを外す
-    # networking.gke.io/load-balancer-ip-addresses: "tagomori-minecraft-ip"
-spec:
-  type: LoadBalancer
-  externalTrafficPolicy: Local
-  selector:
-    app: velocity
-  ports:
-    - name: minecraft
-      port: 25565
-      targetPort: 25577
-      protocol: TCP
+# velocity-lb は 20-nginx-gw.yaml に統合されました
 
 ---
 # ============================================================
