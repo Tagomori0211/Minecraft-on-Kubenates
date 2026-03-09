@@ -84,6 +84,21 @@ resource "google_compute_route" "tailscale_route" {
   next_hop_instance_zone = google_compute_instance.tailscale_subnet_router.zone
 }
 
+# GKE Pod からオンプレミス k3s Service CIDR (10.43.0.0/16) 宛のトラフィックを VM に向ける
+resource "google_compute_route" "onprem_k3s_route" {
+  name        = "onprem-k3s-route"
+  project     = var.project_id
+  network     = google_compute_network.tak_vpc.name
+  description = "Route on-prem k3s Service CIDR to Subnet Router"
+
+  dest_range = "10.43.0.0/16"
+
+  priority = 100
+
+  next_hop_instance      = google_compute_instance.tailscale_subnet_router.self_link
+  next_hop_instance_zone = google_compute_instance.tailscale_subnet_router.zone
+}
+
 # ------------------------------------------------------------
 # Firewall Rules
 # ------------------------------------------------------------

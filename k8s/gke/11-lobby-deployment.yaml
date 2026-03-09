@@ -119,46 +119,6 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 10
 
-        # ── Tailscale Sidecar ───────────────────────────────────
-        # Lobby <--> Tailscale VPN (infrastructure.mermaid)
-        - name: tailscale
-          image: tailscale/tailscale:latest
-          env:
-            - name: TS_AUTHKEY
-              valueFrom:
-                secretKeyRef:
-                  name: tailscale-auth
-                  key: TS_AUTHKEY
-            - name: TS_USERSPACE
-              value: "true"
-            - name: TS_KUBE_SECRET
-              value: ""
-            - name: TS_STATE_DIR
-              value: "/var/lib/tailscale"
-            - name: TS_HOSTNAME
-              value: "tak-lobby-gke"
-            - name: TS_EXTRA_ARGS
-              value: "--accept-routes"
-          volumeMounts:
-            - name: tailscale-state
-              mountPath: /var/lib/tailscale
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "tailscale logout"]
-          resources:
-            requests: { memory: "32Mi", cpu: "10m" }
-            limits: { memory: "64Mi", cpu: "100m" }
-          readinessProbe:
-            exec:
-              command:
-                - /bin/sh
-                - -c
-                - 'tailscale status --json | grep "\"BackendState\"" | grep -q Running'
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            failureThreshold: 6
-
         # ── mc-monitor（Prometheus Exporter）───────────────────
         # Prometheus -->|監視| Lobby (infrastructure.mermaid)
         - name: mc-monitor
@@ -178,5 +138,3 @@ spec:
         - name: lobby-data
           emptyDir:
             sizeLimit: 2Gi
-        - name: tailscale-state
-          emptyDir: {}

@@ -37,6 +37,9 @@ spec:
         # --- WaterdogPE Proxy ---
         - name: waterdogpe
           image: ghcr.io/waterdogpe/waterdogpe:latest
+          env:
+            - { name: TYPE, value: "WATERDOGPE" }
+            - { name: TZ, value: "Asia/Tokyo" }
           ports:
             - containerPort: 19132
               name: bedrock

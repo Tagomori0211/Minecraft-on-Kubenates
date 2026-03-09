@@ -49,17 +49,17 @@ data:
       #           ClusterIP を確認して以下の TODO を置換すること
       - job_name: 'survival'
         static_configs:
-          - targets: ['10.43.0.10:8080']  # TODO: svc-survival の ClusterIP
+          - targets: ['10.43.31.237:8080']  # svc-survival ClusterIP
             labels: { location: onprem, component: survival }
 
       - job_name: 'mod'
         static_configs:
-          - targets: ['10.43.0.11:8080']  # TODO: svc-mod の ClusterIP
+          - targets: ['10.43.188.221:8080']  # svc-mod ClusterIP
             labels: { location: onprem, component: mod }
 
       - job_name: 'bedrock'
         static_configs:
-          - targets: ['10.43.0.12:8080']  # TODO: svc-bedrock-metrics の ClusterIP
+          - targets: ['10.43.91.112:8080']  # svc-bedrock ClusterIP
             labels: { location: onprem, component: bedrock }
 
       # ── オンプレミス AppServer（Tailscale subnet-router 経由）──
@@ -122,54 +122,12 @@ spec:
             requests: { memory: "512Mi", cpu: "250m" }
             limits: { memory: "1Gi", cpu: "1000m" }
 
-        # Tailscale Sidecar: オンプレ監視ターゲットへのVPN接続
-        # Prometheus <--> Tailscale <--> TS_Network (infrastructure.mermaid)
-        - name: tailscale
-          image: tailscale/tailscale:latest
-          env:
-            - name: TS_AUTHKEY
-              valueFrom:
-                secretKeyRef:
-                  name: tailscale-auth
-                  key: TS_AUTHKEY
-            - name: TS_USERSPACE
-              value: "true"
-            - name: TS_KUBE_SECRET
-              value: ""
-            - name: TS_STATE_DIR
-              value: "/var/lib/tailscale"
-            - name: TS_HOSTNAME
-              value: "tak-prometheus-gke"
-            - name: TS_EXTRA_ARGS
-              value: "--accept-routes"
-          volumeMounts:
-            - name: tailscale-state-prometheus
-              mountPath: /var/lib/tailscale
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "tailscale logout"]
-          resources:
-            requests: { memory: "64Mi", cpu: "50m" }
-            limits: { memory: "128Mi", cpu: "200m" }
-          readinessProbe:
-            exec:
-              command:
-                - /bin/sh
-                - -c
-                - 'tailscale status --json | grep "\"BackendState\"" | grep -q Running'
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            failureThreshold: 6
-
       volumes:
         - name: prometheus-config
           configMap:
             defaultMode: 420
             name: prometheus-server-conf
         - name: prometheus-storage
-          emptyDir: {}
-        - name: tailscale-state-prometheus
           emptyDir: {}
 
 ---
@@ -191,38 +149,6 @@ spec:
     - port: 9090
       targetPort: 9090
       name: prometheus
-
----
-# ============================================================
-# Grafana Tailscale Serve ConfigMap
-# ============================================================
-# Grafana を Tailscale ネットワーク上に HTTP で公開する設定
-# Admin --> Tailscale接続 --> http://tak-grafana-gke:80 で Grafana にアクセス
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-tailscale-serve
-  namespace: monitoring
-  labels:
-    app.kubernetes.io/part-of: tak-pipeline
-data:
-  serve-config.json: |
-    {
-      "TCP": {
-        "80": {
-          "HTTPS": false
-        }
-      },
-      "Web": {
-        "${TS_CERT_DOMAIN}:80": {
-          "Handlers": {
-            "/": {
-              "Proxy": "http://127.0.0.1:3000"
-            }
-          }
-        }
-      }
-    }
 
 ---
 # ============================================================
@@ -268,58 +194,6 @@ spec:
           resources:
             requests: { memory: "256Mi", cpu: "100m" }
             limits: { memory: "512Mi", cpu: "500m" }
-
-        # Tailscale Sidecar: 管理者が Tailscale 経由で Grafana にアクセス
-        # Admin --> Tailscale接続 --> Grafana (infrastructure.mermaid)
-        # serve-config.json により port 3000 を Tailscale ネットワーク上の port 80 に公開
-        - name: tailscale
-          image: tailscale/tailscale:latest
-          env:
-            - name: TS_AUTHKEY
-              valueFrom:
-                secretKeyRef:
-                  name: tailscale-auth
-                  key: TS_AUTHKEY
-            - name: TS_USERSPACE
-              value: "true"
-            - name: TS_KUBE_SECRET
-              value: ""
-            - name: TS_STATE_DIR
-              value: "/var/lib/tailscale"
-            - name: TS_HOSTNAME
-              value: "tak-grafana-gke"
-            # serve-config.json のパスを指定 → Tailscale が自動的に HTTP サーブを設定
-            - name: TS_SERVE_CONFIG
-              value: "/tailscale-serve/serve-config.json"
-          volumeMounts:
-            - name: tailscale-state-grafana
-              mountPath: /var/lib/tailscale
-            - name: tailscale-serve-config
-              mountPath: /tailscale-serve
-              readOnly: true
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "tailscale logout"]
-          resources:
-            requests: { memory: "64Mi", cpu: "50m" }
-            limits: { memory: "128Mi", cpu: "200m" }
-          readinessProbe:
-            exec:
-              command:
-                - /bin/sh
-                - -c
-                - 'tailscale status --json | grep "\"BackendState\"" | grep -q Running'
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            failureThreshold: 6
-
-      volumes:
-        - name: tailscale-state-grafana
-          emptyDir: {}
-        - name: tailscale-serve-config
-          configMap:
-            name: grafana-tailscale-serve
 
 ---
 # ============================================================

@@ -41,10 +41,10 @@ data:
     lobby = "lobby:25566"
 
     # オンプレミス Survival（Tailscale subnet-router 経由でk3s ClusterIPに到達）
-    survival = "10.43.153.44:25565"
+    survival = "10.43.31.237:25565"
 
     # オンプレミス Java-Indicatory MOD（NeoForge）
-    mod = "10.43.224.226:25565"
+    mod = "10.43.188.221:25565"
 
     # 接続時の最初のサーバー（フォールバック順）
     try = ["lobby"]

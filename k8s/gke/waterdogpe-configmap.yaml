@@ -14,8 +14,8 @@ data:
 
     servers:
       bedrock-survival:
-        address: "100.69.90.93:19132"
-        public_address: "100.69.90.93:19132"
+        address: "10.43.91.112:19132"
+        public_address: "10.43.91.112:19132"
         server_type: bedrock
 
     online_mode: true

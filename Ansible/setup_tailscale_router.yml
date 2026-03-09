@@ -49,6 +49,26 @@
         state: started
         enabled: yes
 
+    - name: Configure iptables SNAT for GKE to Tailscale
+      iptables:
+        table: nat
+        chain: POSTROUTING
+        out_interface: tailscale0
+        jump: MASQUERADE
+      become: yes
+
+    - name: Install iptables-persistent to save rules
+      apt:
+        name: iptables-persistent
+        state: present
+        update_cache: yes
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Save iptables rules
+      command: netfilter-persistent save
+      become: yes
+
     # 注: 初回は手動または Auth Key での認証が必要
     # Auth Key がある場合は、以下のアクティベーションタスクを有効化
     # - name: Authenticate Tailscale and set up Subnet Router
