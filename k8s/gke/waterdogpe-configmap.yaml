@@ -9,15 +9,14 @@ data:
       motd: "§bsushiski §3Bedrock"
       host: 0.0.0.0:19132
       max_players: 20
+      priorities:
+        - bedrock-survival
 
     servers:
       bedrock-survival:
         address: "100.69.90.93:19132"
         public_address: "100.69.90.93:19132"
         server_type: bedrock
-
-    priorities:
-      - bedrock-survival
 
     online_mode: true
     use_fast_codec: true
