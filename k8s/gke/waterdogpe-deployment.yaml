@@ -34,9 +34,8 @@ spec:
               mountPath: /waterdog-data
 
       containers:
+        # --- WaterdogPE Proxy ---
         - name: waterdogpe
-          # Note: ghcr.io/waterdogpe/waterdogpe:latest is the official image if it exists.
-          # If it fails, we may need a custom build.
           image: ghcr.io/waterdogpe/waterdogpe:latest
           ports:
             - containerPort: 19132
@@ -53,7 +52,6 @@ spec:
             - name: waterdog-data
               mountPath: /home/config.yml
               subPath: config.yml
-          # Generic Java/process probes as per migration guide
           readinessProbe:
             exec:
               command: ["sh", "-c", "pgrep -f waterdogpe || pgrep -f java"]
@@ -65,6 +63,7 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 15
 
+        # --- Tailscale Sidecar (Userspace mode) ---
         - name: tailscale
           image: tailscale/tailscale:latest
           env:
@@ -80,7 +79,7 @@ spec:
             - name: TS_STATE_DIR
               value: "/var/lib/tailscale"
             - name: TS_HOSTNAME
-              value: "tak-waterdog-gke"
+              value: tak-waterdog-gke
           resources:
             requests:
               cpu: "50m"
