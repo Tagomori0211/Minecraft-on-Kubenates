@@ -6,14 +6,15 @@ graph TB
         User["一般ユーザー<br/>（ステータス閲覧）"]
     end
 
-    subgraph Sakura["さくらVPS（遊休リソース活用）"]
-        Nginx_Sakura["Nginx<br/>UDP/TCPプロキシ"]
-        TS_Sakura["Tailscale Client"]
-    end
-
     subgraph GKE["GKE Autopilot（コントロールプレーン）"]
         CP["Control Plane<br/>（Googleマネージド）"]
-        Velocity["Java-Velocity<br/>（Spot Pod）"]
+
+        subgraph GW["Nginx Stream Gateway（通常Pod）"]
+            Nginx_TCP["stream: 25565/TCP<br/>→ Velocity（ClusterIP）"]
+            Nginx_UDP["stream: 19132/UDP<br/>→ Bedrock（Tailscale）"]
+        end
+
+        Velocity["Java-Velocity<br/>（Spot Pod / ClusterIP）"]
         Lobby["Java-Lobby<br/>（Spot Pod）"]
         Prometheus["Prometheus<br/>（通常Pod）"]
         Grafana["Grafana<br/>（通常Pod / 管理者専用）"]
@@ -27,7 +28,7 @@ graph TB
         Java_Survival["Java-Survival"]
         Java_Mod["Java-Indicatory MOD"]
         Bedrock_Server["Bedrock Server"]
-        TS_Router_Sub["Tailscale Client"]
+        TS_Router_MC["Tailscale Client"]
     end
 
     subgraph AppServer["オンプレ：AppServer（k3sノード）"]
@@ -40,44 +41,51 @@ graph TB
         end
     end
 
-    Player_Java -->|25565/TCP| Velocity
-    Player_Bedrock -->|19132/UDP| Nginx_Sakura
+    %% --- プレイヤー接続 ---
+    Player_Java -->|"25565/TCP<br/>（GKE L4 LB）"| GW
+    Player_Bedrock -->|"19132/UDP<br/>（GKE L4 LB）"| GW
+
+    Nginx_TCP -->|"ClusterIP<br/>GKE内部通信"| Velocity
+    Nginx_UDP -->|"Tailscale経由<br/>UDP転送"| TS_Router_MC
+    TS_Router_MC -->|転送| Bedrock_Server
+
     Admin -->|Tailscale接続| Grafana
     User -->|HTTPS| CF_Tunnel
 
+    %% --- Status Platform ---
     CF_Tunnel -->|ルーティング| Flutter_Web
-    Flutter_Web -->|gRPC-Web（HTTP/1.1）| Envoy
-    Envoy -->|gRPC（HTTP/2）| Kotlin_API
+    Flutter_Web -->|"gRPC-Web（HTTP/1.1）"| Envoy
+    Envoy -->|"gRPC（HTTP/2）"| Kotlin_API
     Kotlin_API -->|PromQL / HTTP API| Prometheus
 
     Proto -.->|コード生成| Kotlin_API
     Proto -.->|コード生成| Flutter_Web
 
-    Nginx_Sakura -->|Tailscale経由| TS_Router_Sub
-    TS_Router_Sub -->|転送| Bedrock_Server
-
+    %% --- Tailscale メッシュ ---
     Velocity <-->|Tailscale| TS_Network
     Lobby <-->|Tailscale| TS_Network
-    TS_Sakura <-->|Tailscale| TS_Network
-    TS_Router_Sub <-->|Tailscale| TS_Network
+    GW <-->|Tailscale| TS_Network
+    TS_Router_MC <-->|Tailscale| TS_Network
     Prometheus <-->|Tailscale| TS_Network
 
+    %% --- Java サーバー転送 ---
     Velocity -->|転送| Lobby
     Velocity -->|転送| Java_Survival
     Velocity -->|転送| Java_Mod
 
+    %% --- 監視 ---
+    Prometheus -->|監視| GW
     Prometheus -->|監視| Velocity
     Prometheus -->|監視| Lobby
     Prometheus -->|監視| Java_Survival
     Prometheus -->|監視| Java_Mod
     Prometheus -->|監視| Bedrock_Server
-    Prometheus -->|監視| Nginx_Sakura
     Prometheus -->|監視| Kotlin_API
 
     Grafana -->|可視化| Prometheus
 
-    style Nginx_Sakura fill:#ff69b4,color:#fff
     style CP fill:#4285f4,color:#fff
+    style GW fill:#00C853,color:#fff
     style Velocity fill:#34a853,color:#fff
     style Lobby fill:#fbbc04,color:#000
     style Bedrock_Server fill:#ea4335,color:#fff

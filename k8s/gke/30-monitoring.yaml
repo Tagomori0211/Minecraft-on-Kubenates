@@ -145,6 +145,10 @@ spec:
           volumeMounts:
             - name: tailscale-state-prometheus
               mountPath: /var/lib/tailscale
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "tailscale logout"]
           resources:
             requests: { memory: "64Mi", cpu: "50m" }
             limits: { memory: "128Mi", cpu: "200m" }
@@ -293,6 +297,10 @@ spec:
             - name: tailscale-serve-config
               mountPath: /tailscale-serve
               readOnly: true
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "tailscale logout"]
           resources:
             requests: { memory: "64Mi", cpu: "50m" }
             limits: { memory: "128Mi", cpu: "200m" }

@@ -142,6 +142,10 @@ spec:
           volumeMounts:
             - name: tailscale-state
               mountPath: /var/lib/tailscale
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "tailscale logout"]
           resources:
             requests: { memory: "32Mi", cpu: "10m" }
             limits: { memory: "64Mi", cpu: "100m" }
