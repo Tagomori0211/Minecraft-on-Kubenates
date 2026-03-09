@@ -394,35 +394,7 @@ spec:
           resources:
             requests: { memory: "2Gi", cpu: "500m" }
             limits: { memory: "2.5Gi", cpu: "2000m" }
-          startupProbe:
-            exec:
-              command:
-                [
-                  "/usr/bin/mc-monitor",
-                  "status",
-                  "--host",
-                  "127.0.0.1",
-                  "--port",
-                  "19132",
-                  "--edition",
-                  "bedrock",
-                ]
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 30
-          livenessProbe:
-            exec:
-              command:
-                [
-                  "/usr/bin/mc-monitor",
-                  "status",
-                  "--host",
-                  "127.0.0.1",
-                  "--port",
-                  "19132",
-                  "--edition",
-                  "bedrock",
-                ]
+        # Probes removed due to missing mc-monitor binary in bedrock image
 
         # ── mc-monitor（Prometheus Exporter / Bedrock対応）────
         # Prometheus -->|監視| Bedrock_Server (infrastructure.mermaid)

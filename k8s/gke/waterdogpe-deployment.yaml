@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: waterdogpe
+  namespace: minecraft
+  labels:
+    app: waterdogpe
+    app.kubernetes.io/component: proxy-bedrock
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: waterdogpe
+  template:
+    metadata:
+      labels:
+        app: waterdogpe
+    spec:
+      containers:
+        - name: waterdogpe
+          # Note: ghcr.io/waterdogpe/waterdogpe:latest is the official image if it exists.
+          # If it fails, we may need a custom build.
+          image: ghcr.io/waterdogpe/waterdogpe:latest
+          ports:
+            - containerPort: 19132
+              name: bedrock
+              protocol: UDP
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1024Mi"
+          volumeMounts:
+            - name: config
+              mountPath: /opt/waterdogpe/config.yml
+              subPath: config.yml
+          # Generic Java/process probes as per migration guide
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pgrep -f waterdogpe || pgrep -f java"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pgrep -f waterdogpe || pgrep -f java"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+
+        - name: tailscale
+          image: tailscale/tailscale:latest
+          env:
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_USERSPACE
+              value: "true"
+            - name: TS_KUBE_SECRET
+              value: ""
+            - name: TS_STATE_DIR
+              value: "/var/lib/tailscale"
+            - name: TS_HOSTNAME
+              value: "tak-waterdog-gke"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+          volumeMounts:
+            - name: tailscale-state
+              mountPath: /var/lib/tailscale
+
+      volumes:
+        - name: config
+          configMap:
+            name: waterdogpe-config
+        - name: tailscale-state
+          emptyDir: {}

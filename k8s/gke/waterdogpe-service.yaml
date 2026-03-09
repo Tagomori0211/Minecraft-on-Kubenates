@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: waterdogpe-lb
+  namespace: minecraft
+  labels:
+    app: waterdogpe
+    app.kubernetes.io/component: gateway-bedrock
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    app: waterdogpe
+  ports:
+    - name: bedrock
+      port: 19132
+      targetPort: 19132
+      protocol: UDP

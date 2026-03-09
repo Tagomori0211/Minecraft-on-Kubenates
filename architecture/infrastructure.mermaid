@@ -11,8 +11,9 @@ graph TB
 
         subgraph GW["Nginx Stream Gateway（通常Pod）"]
             Nginx_TCP["stream: 25565/TCP<br/>→ Velocity（ClusterIP）"]
-            Nginx_UDP["stream: 19132/UDP<br/>→ Bedrock（Tailscale）"]
         end
+
+        WaterdogPE["WaterdogPE<br/>（通常Pod / UDP 19132）<br/>RakNet Native Proxy"]
 
         Velocity["Java-Velocity<br/>（通常Pod / ClusterIP）"]
         Lobby["Java-Lobby<br/>（Spot Pod）"]
@@ -36,9 +37,9 @@ graph TB
                     Java_Industry["Java-Industry MOD<br/>30Gi Guaranteed"]
                 end
                 subgraph Conservative["保守的・安定（Bedrock）"]
-                    Bedrock_Server["Bedrock Server<br/>2Gi Guaranteed"]
+                    Bedrock_Server["Bedrock Server<br/>2Gi Guaranteed<br/>xbox-auth=off"]
                 end
-                TS_Sidecar["Tailscale sidecar<br/>256Mi"]
+                TS_Sidecar["Tailscale Client"]
             end
 
             subgraph NS_SP["namespace: status-platform"]
@@ -52,10 +53,10 @@ graph TB
 
     %% --- プレイヤー接続 ---
     Player_Java -->|"25565/TCP<br/>（GKE L4 LB）"| GW
-    Player_Bedrock -->|"19132/UDP<br/>（GKE L4 LB）"| GW
+    Player_Bedrock -->|"19132/UDP<br/>（GKE L4 LB）"| WaterdogPE
 
     Nginx_TCP -->|"ClusterIP<br/>GKE内部通信"| Velocity
-    Nginx_UDP -->|"Tailscale経由<br/>UDP転送"| TS_Sidecar
+    WaterdogPE -->|"Tailscale経由<br/>RakNet転送"| TS_Sidecar
     TS_Sidecar -->|転送| Bedrock_Server
 
     Admin -->|Tailscale接続| Grafana
@@ -71,6 +72,7 @@ graph TB
     Velocity <-->|Tailscale| TS_Network
     Lobby <-->|Tailscale| TS_Network
     GW <-->|Tailscale| TS_Network
+    WaterdogPE <-->|Tailscale| TS_Network
     TS_Sidecar <-->|Tailscale| TS_Network
     Prometheus <-->|Tailscale| TS_Network
 
@@ -81,6 +83,7 @@ graph TB
 
     %% --- 監視 ---
     Prometheus -->|監視| GW
+    Prometheus -->|監視| WaterdogPE
     Prometheus -->|監視| Velocity
     Prometheus -->|監視| Lobby
     Prometheus -->|監視| Java_Survival
@@ -92,6 +95,7 @@ graph TB
 
     style CP fill:#4285f4,color:#fff
     style GW fill:#00C853,color:#fff
+    style WaterdogPE fill:#00BFA5,color:#fff
     style Velocity fill:#34a853,color:#fff
     style Lobby fill:#fbbc04,color:#000
     style Bedrock_Server fill:#ea4335,color:#fff
