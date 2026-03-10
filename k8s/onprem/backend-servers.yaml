@@ -401,8 +401,8 @@ spec:
             - mountPath: /data
               name: data
           resources:
-            requests: { memory: "2Gi", cpu: "500m" }
-            limits: { memory: "2.5Gi", cpu: "2000m" }
+            requests: { memory: "4Gi", cpu: "4" }
+            limits: { memory: "8Gi", cpu: "8" }
         # Probes removed due to missing mc-monitor binary in bedrock image
 
         # ── mc-monitor（Prometheus Exporter / Bedrock対応）────
