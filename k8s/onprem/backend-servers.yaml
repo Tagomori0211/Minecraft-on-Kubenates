@@ -387,6 +387,7 @@ spec:
             - { name: MAX_PLAYERS, value: "20" }
             - { name: ALLOW_CHEATS, value: "false" }
             - { name: TZ, value: "Asia/Tokyo" }
+            - { name: ONLINE_MODE, value: "false" }
           ports:
             - containerPort: 19132
               name: bedrock
