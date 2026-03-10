@@ -381,13 +381,18 @@ spec:
           image: itzg/minecraft-bedrock-server:latest
           env:
             - { name: EULA, value: "TRUE" }
-            - { name: GAMEMODE, value: "survival" }
-            - { name: DIFFICULTY, value: "normal" }
-            - { name: SERVER_NAME, value: "sushiski Bedrock" }
-            - { name: MAX_PLAYERS, value: "20" }
-            - { name: ALLOW_CHEATS, value: "false" }
             - { name: TZ, value: "Asia/Tokyo" }
             - { name: ONLINE_MODE, value: "false" }
+            - { name: SERVER_NAME, value: "Sushi.ski-Server" }
+            - { name: GAMEMODE, value: "survival" }
+            - { name: FORCE_GAMEMODE, value: "true" }
+            - { name: DIFFICULTY, value: "easy" }
+            - { name: ALLOW_CHEATS, value: "true" }
+            - { name: MAX_PLAYERS, value: "25" }
+            - { name: ALLOW_LIST, value: "false" }
+            - { name: VIEW_DISTANCE, value: "48" }
+            - { name: TICK_DISTANCE, value: "8" }
+            - { name: PLAYER_IDLE_TIMEOUT, value: "30" }
           ports:
             - containerPort: 19132
               name: bedrock
