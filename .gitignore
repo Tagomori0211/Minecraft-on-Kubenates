@@ -230,7 +230,17 @@ crash.log
 # .terraform-version
 # .vscode/
 
-#k3s secret
+# k3s secret
 secret.yaml
-*-secret.yaml\n# Temporary k8s/secret files\nk8s/gke/gke_*\nk8s/gke/onprem_kubeconfig.yaml\nk8s/onprem/onprem_*\n
-*Task_mdsworld.zip
+*-secret.yaml
+
+# Temporary k8s/secret files
+k8s/gke/gke_*
+k8s/gke/onprem_kubeconfig.yaml
+k8s/onprem/onprem_*
+
+# Large files
+world.zip
+
+# Scripts
+scripts/
