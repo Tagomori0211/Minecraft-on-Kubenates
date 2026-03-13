@@ -45,115 +45,119 @@ flowchart LR
 ## 🏗️ アーキテクチャ
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Internet["インターネット"]
-        Player_Java["Java版プレイヤー"]
-        Player_Bedrock["Bedrock版プレイヤー"]
-        Admin["管理者（外部）"]
-        User["一般ユーザー<br/>（ステータス閲覧）"]
+        direction LR
+        Player_Java["Java版"]
+        Player_Bedrock["Bedrock版"]
+        Admin["管理者"]
+        User["一般ユーザー"]
     end
 
-    subgraph GKE["GKE Autopilot（asia-northeast1）"]
-        CP["Control Plane<br/>（Googleマネージド）"]
-
-        subgraph GW["Nginx Stream Gateway（通常Pod）"]
-            Nginx_TCP["stream: 25565/TCP<br/>→ Velocity（ClusterIP）"]
-            Nginx_UDP["stream: 19132/UDP<br/>→ Bedrock（Tailscale）"]
-        end
-
-        Velocity["Java-Velocity<br/>（通常Pod / ClusterIP）"]
-        Lobby["Java-Lobby<br/>（Spot Pod）"]
-        Prometheus["Prometheus<br/>（通常Pod）"]
-        Grafana["Grafana<br/>（通常Pod / 管理者専用）"]
-    end
-
-    subgraph Tailscale["Tailscale VPN"]
-        TS_Network["プライベートネットワーク<br/>100.x.x.x"]
-    end
-
-    subgraph Onprem["オンプレ：Ryzen 5700G / 64GB"]
-        subgraph DevShell["dev-shell VM（2Gi）"]
-            SSH["SSH 隔離環境<br/>Antigravity用"]
-        end
-
-        subgraph Worker["k3s-worker VM（58Gi）"]
-            subgraph NS_MC["namespace: minecraft"]
-                subgraph Experimental["実験的・先進的（Java）"]
-                    Java_Survival["Java-Survival<br/>16Gi Guaranteed"]
-                    Java_Industry["Java-Industry MOD<br/>30Gi Guaranteed"]
-                end
-                subgraph Conservative["保守的・安定（Bedrock）"]
-                    Bedrock_Server["Bedrock Server<br/>2Gi Guaranteed"]
-                end
-                TS_Sidecar["Tailscale sidecar<br/>256Mi"]
+    subgraph GCP["GCP (asia-northeast1)"]
+        direction TB
+        
+        subgraph GKE["GKE Autopilot"]
+            subgraph MonPods["監視層"]
+                Prometheus["Prometheus"]
+                Grafana["Grafana"]
             end
-
-            subgraph NS_SP["namespace: status-platform"]
-                Kotlin_API["Kotlin API（Ktor + gRPC）<br/>1Gi"]
-                Flutter_Web["Flutter Web<br/>256Mi"]
-                Envoy["Envoy Proxy<br/>256Mi"]
-                CF_Tunnel["Cloudflare Tunnel<br/>128Mi"]
+            subgraph GamePods["ゲームプロキシ層"]
+                GW["Nginx GW<br/>25565/TCP"]
+                WaterdogPE["WaterdogPE<br/>19132/UDP"]
+                Velocity["Velocity<br/>ClusterIP"]
+                Lobby["Lobby<br/>Spot Pod"]
             end
+            
+        end
+        subgraph transform01["a"]
+        direction TB
+            SubnetRouter["Subnet Router<br/>e2-micro / VPC 100.64.0.0/10"]
         end
     end
 
-    %% --- プレイヤー接続 ---
-    Player_Java -->|"25565/TCP<br/>（GKE L4 LB）"| GW
-    Player_Bedrock -->|"19132/UDP<br/>（GKE L4 LB）"| GW
+    subgraph TS["Tailscale VPN (100.x.x.x)"]
+        TS_Net["Tailscale仮想LAN"]
+    end
 
-    Nginx_TCP -->|"ClusterIP<br/>GKE内部通信"| Velocity
-    Nginx_UDP -->|"Tailscale経由<br/>UDP転送"| TS_Sidecar
-    TS_Sidecar -->|転送| Bedrock_Server
+    subgraph Onprem["オンプレ: Ryzen 5700G / 64GB"]
+        subgraph Worker["k3s-worker VM (58Gi)"]
+            TS_K3s["Tailscale Client"]
+            subgraph GameServers["ゲームサーバー"]
+                subgraph Experimental["実験的 (Java)"]
+                    Java_Survival["Survival<br/>16Gi"]
+                    Java_Industry["Industry MOD<br/>30Gi"]
+                end
+                subgraph Conservative["安定 (Bedrock)"]
+                    Bedrock["Bedrock<br/>2Gi"]
+                end
+            end
+            subgraph SP["Status Platform"]
+                direction TB
+                CF_Tunnel["CF Tunnel"]
+                Flutter["Flutter Web"]
+                Envoy["Envoy"]
+                Kotlin["Kotlin API<br/>Ktor + gRPC"]
+            end
+        end
+        
+    end
 
-    Admin -->|Tailscale接続| Grafana
-    User -->|HTTPS| CF_Tunnel
+    %% === ゲームトラフィック ===
+    Player_Java -->|"25565/TCP"| GW
+    Player_Bedrock -->|"19132/UDP"| WaterdogPE
+    GW --> Velocity
+    Velocity --> Lobby
 
-    %% --- Status Platform ---
-    CF_Tunnel -->|ルーティング| Flutter_Web
-    Flutter_Web -->|"gRPC-Web（HTTP/1.1）"| Envoy
-    Envoy -->|"gRPC（HTTP/2）"| Kotlin_API
-    Kotlin_API -->|PromQL / HTTP API| Prometheus
+    %% === GKE → Tailscale → オンプレ ===
+    Velocity --->|"VPC Route"| SubnetRouter
+    WaterdogPE --->|"VPC Route"| SubnetRouter
+    TS_Net <--> TS_K3s
+    TS_K3s --> Java_Survival
+    TS_K3s --> Java_Industry
+    TS_K3s --> Bedrock
+    
+    SubnetRouter <-->|"Tunnel"| TS_Net
+    %% === Status Platform ===
+    User ------->|"HTTPS"| CF_Tunnel
+    direction TB
+    CF_Tunnel --> Flutter
+    Flutter --> Envoy
+    Envoy --> Kotlin
 
-    %% --- Tailscale メッシュ ---
-    Velocity <-->|Tailscale| TS_Network
-    Lobby <-->|Tailscale| TS_Network
-    GW <-->|Tailscale| TS_Network
-    TS_Sidecar <-->|Tailscale| TS_Network
-    Prometheus <-->|Tailscale| TS_Network
+    
 
-    %% --- Java サーバー転送 ---
-    Velocity -->|転送| Lobby
-    Velocity -->|転送| Java_Survival
-    Velocity -->|転送| Java_Industry
+    %% === 管理者・監視 ===
+    Admin -->|"Tailscale"| Grafana
+    Grafana -.-> Prometheus
+    Prometheus -.->|"VPC Route"| SubnetRouter
 
-    %% --- 監視 ---
-    Prometheus -->|監視| GW
-    Prometheus -->|監視| Velocity
-    Prometheus -->|監視| Lobby
-    Prometheus -->|監視| Java_Survival
-    Prometheus -->|監視| Java_Industry
-    Prometheus -->|監視| Bedrock_Server
-    Prometheus -->|監視| Kotlin_API
+    
 
-    Grafana -->|可視化| Prometheus
-
-    style CP fill:#4285f4,color:#fff
+    %% === スタイル ===
     style GW fill:#00C853,color:#fff
+    style WaterdogPE fill:#00BFA5,color:#fff
     style Velocity fill:#34a853,color:#fff
     style Lobby fill:#fbbc04,color:#000
-    style Bedrock_Server fill:#ea4335,color:#fff
-    style Java_Survival fill:#2E7D32,color:#fff
-    style Java_Industry fill:#1B5E20,color:#fff
     style Prometheus fill:#e6522c,color:#fff
     style Grafana fill:#f46800,color:#fff
-    style Kotlin_API fill:#7F52FF,color:#fff
-    style Flutter_Web fill:#02569B,color:#fff
+    style SubnetRouter fill:#8B5CF6,color:#fff
+    style TS_Net fill:#333,color:#fff
+    style TS_K3s fill:#555,color:#fff
+    style Java_Survival fill:#2E7D32,color:#fff
+    style Java_Industry fill:#1B5E20,color:#fff
+    style Bedrock fill:#ea4335,color:#fff
     style CF_Tunnel fill:#F6821F,color:#fff
+    style Flutter fill:#02569B,color:#fff
     style Envoy fill:#AC6199,color:#fff
-    style SSH fill:#607D8B,color:#fff
-    style TS_Sidecar fill:#555,color:#fff
+    style Kotlin fill:#7F52FF,color:#fff
+    style DevShell fill:#607D8B,color:#fff
+    style GamePods fill:#0d1117,color:#c9d1d9,stroke:#30363d
+    style MonPods fill:#0d1117,color:#c9d1d9,stroke:#30363d
+    style GameServers fill:#0d1117,color:#c9d1d9,stroke:#30363d
     style Experimental fill:#1a1a2e,color:#4ade80,stroke:#4ade80
     style Conservative fill:#1a1a2e,color:#f87171,stroke:#f87171
+    style SP fill:#0d1117,color:#c9d1d9,stroke:#30363d
 ```
 
 ### コンポーネント構成
