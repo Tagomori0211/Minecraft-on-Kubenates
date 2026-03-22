@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bedrock-relay
+  namespace: minecraft
+  labels:
+    app: bedrock-relay
+    app.kubernetes.io/component: proxy-bedrock
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bedrock-relay
+  template:
+    metadata:
+      labels:
+        app: bedrock-relay
+    spec:
+      containers:
+        # --- Bedrock Relay (Node.js) ---
+        - name: bedrock-relay
+          image: asia-northeast1-docker.pkg.dev/project-61cf5742-d0ea-45ed-ac0/sushiski/bedrock-relay:v1-jp
+          imagePullPolicy: Always
+          env:
+            # 宛先はオンプレミスのBedrock Server ClusterIP
+            - { name: DEST_HOST, value: "10.43.91.112" }
+            - { name: DEST_PORT, value: "19132" }
+            - { name: TZ, value: "Asia/Tokyo" }
+          ports:
+            - containerPort: 19132
+              name: bedrock
+              protocol: UDP
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+        # --- Tailscale Sidecar (k3s ClusterIP 解決用) ---
+        - name: tailscale
+          image: tailscale/tailscale:latest
+          env:
+            - name: TS_USERSPACE
+              value: "true"
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_EXTRA_ARGS
+              value: "--accept-routes"
+            - name: TS_HOSTNAME
+              value: "tak-bedrock-relay"
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
+            privileged: true
+          resources:
+            requests: { memory: "64Mi", cpu: "10m" }
+            limits: { memory: "128Mi", cpu: "100m" }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bedrock-relay-service
+  namespace: minecraft
+  labels:
+    app: bedrock-relay
+    app.kubernetes.io/component: proxy-bedrock
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  selector:
+    app: bedrock-relay
+  type: ClusterIP
+  ports:
+    - port: 19132
+      name: bedrock
+      protocol: UDP

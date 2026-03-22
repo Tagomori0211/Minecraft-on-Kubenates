@@ -23,16 +23,24 @@ data:
     }
 
     stream {
-        # Tailscale MagicDNS を解決するためのリゾルバ
-        resolver 100.100.100.100 valid=10s;
+        # Kubernetes内部DNSとTailscale MagicDNSのリゾルバ
+        resolver 10.96.0.10 100.100.100.100 valid=10s;
 
         server {
             listen 25565;
-            # 変数を使用して解決を遅延
             set $velocity_backend velocity.minecraft.svc.cluster.local:25577;
             proxy_pass $velocity_backend;
             proxy_timeout 10m;
             proxy_connect_timeout 30s;
+        }
+
+        # Bedrock Relay (UDP)
+        server {
+            listen 19132 udp;
+            set $bedrock_backend bedrock-relay-service.minecraft.svc.cluster.local:19132;
+            proxy_pass $bedrock_backend;
+            proxy_timeout 10m;
+            proxy_responses 1;
         }
     }
 
@@ -65,6 +73,9 @@ spec:
             - containerPort: 25565
               name: minecraft
               protocol: TCP
+            - containerPort: 19132
+              name: bedrock
+              protocol: UDP
           volumeMounts:
             - name: config
               mountPath: /etc/nginx/nginx.conf
@@ -99,3 +110,24 @@ spec:
       port: 25565
       targetPort: 25565
       protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-gw-udp
+  namespace: minecraft
+  labels:
+    app: nginx-gw
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: tak-pipeline
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    app: nginx-gw
+  ports:
+    - name: bedrock
+      port: 19132
+      targetPort: 19132
+      protocol: UDP
