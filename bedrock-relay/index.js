@@ -4,12 +4,15 @@ const HOST = process.env.LISTEN_HOST || '0.0.0.0';
 const PORT = parseInt(process.env.LISTEN_PORT || "19132");
 const DEST_HOST = process.env.DEST_HOST || '10.43.91.112'; // Default to k3s Bedrock ClusterIP 
 const DEST_PORT = parseInt(process.env.DEST_PORT || "19132");
+const MC_VERSION = process.env.MC_VERSION || '1.26.3.1';
 
 console.log(`Starting Bedrock Relay: listening on ${HOST}:${PORT}, forwarding to ${DEST_HOST}:${DEST_PORT}...`);
+console.log(`Forcing Minecraft Version: ${MC_VERSION}`);
 
 const relay = new Relay({
     host: HOST,
     port: PORT,
+    version: MC_VERSION,
     destination: {
         host: DEST_HOST,
         port: DEST_PORT
