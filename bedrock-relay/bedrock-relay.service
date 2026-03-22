@@ -1,0 +1,17 @@
+[Unit]
+Description=Bedrock Relay node.js service
+After=network.target
+
+[Service]
+Type=simple
+User=shinari
+WorkingDirectory=/home/shinari/bedrock-relay
+ExecStart=/bin/bash /home/shinari/bedrock-relay/start.sh
+Restart=on-failure
+Environment=LISTEN_PORT=19132
+Environment=DEST_HOST=10.43.91.112
+Environment=DEST_PORT=19132
+Environment=MC_VERSION=1.26.0
+
+[Install]
+WantedBy=multi-user.target

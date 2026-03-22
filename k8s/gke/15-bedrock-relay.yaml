@@ -20,13 +20,13 @@ spec:
       containers:
         # --- Bedrock Relay (Node.js) ---
         - name: bedrock-relay
-          image: asia-northeast1-docker.pkg.dev/project-61cf5742-d0ea-45ed-ac0/sushiski/bedrock-relay:v1-jp
+          image: asia-northeast1-docker.pkg.dev/project-61cf5742-d0ea-45ed-ac0/sushiski/bedrock-relay:v4-jp
           imagePullPolicy: Always
           env:
             # 宛先はオンプレミスのBedrock Server ClusterIP
             - { name: DEST_HOST, value: "10.43.91.112" }
             - { name: DEST_PORT, value: "19132" }
-            - { name: MC_VERSION, value: "1.26.3.1" }
+            - { name: MC_VERSION, value: "1.26.0" }
             - { name: TZ, value: "Asia/Tokyo" }
           ports:
             - containerPort: 19132

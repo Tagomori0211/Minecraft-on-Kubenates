@@ -23,8 +23,8 @@ data:
     }
 
     stream {
-        # Kubernetes内部DNSとTailscale MagicDNSのリゾルバ
-        resolver 10.96.0.10 100.100.100.100 valid=10s;
+        # GKE kube-dns resolver
+        resolver 10.102.0.10 100.100.100.100 valid=10s;
 
         server {
             listen 25565;
@@ -34,13 +34,12 @@ data:
             proxy_connect_timeout 30s;
         }
 
-        # Bedrock Relay (On-Prem ubuntu-151 via Tailscale)
+        # Bedrock Relay (Native on ubuntu-151 via VPN)
         server {
             listen 19132 udp;
-            set $bedrock_backend 100.100.135.81:19133;
+            set $bedrock_backend 100.100.135.81:19132;
             proxy_pass $bedrock_backend;
             proxy_timeout 10m;
-            proxy_responses 1;
         }
     }
 
@@ -91,10 +90,11 @@ spec:
             name: nginx-gw-config
 
 ---
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx-gw-tcp
+  name: nginx-gw-java
   namespace: minecraft
   labels:
     app: nginx-gw
@@ -115,7 +115,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx-gw-udp
+  name: nginx-gw-bedrock
   namespace: minecraft
   labels:
     app: nginx-gw
