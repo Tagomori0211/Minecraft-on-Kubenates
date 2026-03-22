@@ -54,10 +54,6 @@ spec:
               value: "--accept-routes"
             - name: TS_HOSTNAME
               value: "tak-bedrock-relay"
-          securityContext:
-            capabilities:
-              add: ["NET_ADMIN", "NET_RAW"]
-            privileged: true
           resources:
             requests: { memory: "64Mi", cpu: "10m" }
             limits: { memory: "128Mi", cpu: "100m" }
