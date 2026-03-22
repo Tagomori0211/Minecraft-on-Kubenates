@@ -34,10 +34,10 @@ data:
             proxy_connect_timeout 30s;
         }
 
-        # Bedrock Relay (UDP)
+        # Bedrock Relay (On-Prem ubuntu-151 via Tailscale)
         server {
             listen 19132 udp;
-            set $bedrock_backend bedrock-relay-service.minecraft.svc.cluster.local:19132;
+            set $bedrock_backend 100.100.135.81:19133;
             proxy_pass $bedrock_backend;
             proxy_timeout 10m;
             proxy_responses 1;

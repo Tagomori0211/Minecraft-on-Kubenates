@@ -1,11 +1,11 @@
-FROM node:20-alpine
+FROM node:20
 
 # コンテナ内の作業ディレクトリを作成
 WORKDIR /usr/src/app
 
 # package.json をコピーして依存関係をインストール
 COPY package*.json ./
-RUN npm install
+RUN apt-get update && apt-get install -y python3 make g++ cmake zlib1g-dev && npm install --omit=dev
 
 # ソースコードをコピー
 COPY . .
