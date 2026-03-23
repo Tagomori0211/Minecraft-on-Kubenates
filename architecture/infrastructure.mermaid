@@ -16,8 +16,7 @@ flowchart TB
                 Grafana["Grafana"]
             end
             subgraph GamePods["ゲームプロキシ層"]
-                GW["Nginx GW<br/>25565/TCP"]
-                WaterdogPE["WaterdogPE<br/>19132/UDP"]
+                GW["Nginx GW<br/>25565/TCP<br/>19132/UDP"]
                 Velocity["Velocity<br/>ClusterIP"]
                 Lobby["Lobby<br/>Spot Pod"]
             end
@@ -42,7 +41,7 @@ flowchart TB
                     Java_Industry["Industry MOD<br/>30Gi"]
                 end
                 subgraph Conservative["安定 (Bedrock)"]
-                    Bedrock["Bedrock<br/>2Gi"]
+                    Bedrock["Bedrock (BDS)<br/>8Gi / 16-Thread<br/>hostPort 19132"]
                 end
             end
             subgraph SP["Status Platform"]
@@ -58,13 +57,13 @@ flowchart TB
 
     %% === ゲームトラフィック ===
     Player_Java -->|"25565/TCP"| GW
-    Player_Bedrock -->|"19132/UDP"| WaterdogPE
+    Player_Bedrock -->|"19132/UDP"| GW
     GW --> Velocity
     Velocity --> Lobby
 
     %% === GKE → Tailscale → オンプレ ===
     Velocity --->|"VPC Route"| SubnetRouter
-    WaterdogPE --->|"VPC Route"| SubnetRouter
+    GW ---->|"UDP Stream (L4 Proxy)"| SubnetRouter
     TS_Net <--> TS_K3s
     TS_K3s --> Java_Survival
     TS_K3s --> Java_Industry
@@ -89,7 +88,6 @@ flowchart TB
 
     %% === スタイル ===
     style GW fill:#00C853,color:#fff
-    style WaterdogPE fill:#00BFA5,color:#fff
     style Velocity fill:#34a853,color:#fff
     style Lobby fill:#fbbc04,color:#000
     style Prometheus fill:#e6522c,color:#fff
@@ -104,7 +102,6 @@ flowchart TB
     style Flutter fill:#02569B,color:#fff
     style Envoy fill:#AC6199,color:#fff
     style Kotlin fill:#7F52FF,color:#fff
-    style DevShell fill:#607D8B,color:#fff
     style GamePods fill:#0d1117,color:#c9d1d9,stroke:#30363d
     style MonPods fill:#0d1117,color:#c9d1d9,stroke:#30363d
     style GameServers fill:#0d1117,color:#c9d1d9,stroke:#30363d
