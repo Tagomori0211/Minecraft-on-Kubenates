@@ -6,8 +6,10 @@ spec:
   statefulSet:
     pod:
       tailscaleInitContainer:
+        image: alpine:latest
         securityContext:
           privileged: false
+          allowPrivilegeEscalation: false
           runAsUser: 1000
           runAsNonRoot: true
           capabilities:
@@ -16,6 +18,7 @@ spec:
       tailscaleContainer:
         securityContext:
           privileged: false
+          allowPrivilegeEscalation: false
           runAsUser: 1000
           runAsNonRoot: true
           capabilities:
