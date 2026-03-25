@@ -1,41 +1,29 @@
-# On-Premises Bedrock UDP Service via Tailscale Operator Egress Proxy
+# On-Premises Bedrock UDP Service via Direct Routing
 apiVersion: v1
 kind: Service
 metadata:
   name: onprem-bedrock-udp
   namespace: minecraft
-  annotations:
-    # 100.69.90.93 はオンプレミス Tailscale Subnet Router の IP
-    tailscale.com/tailnet-ip: "100.69.90.93"
-    tailscale.com/proxy-class: "autopilot"
 spec:
-  externalName: placeholder
   type: ExternalName
+  externalName: 100.100.135.81
 ---
-# On-Premises Survival TCP Service
+# On-Premises Survival TCP Service via Direct Routing
 apiVersion: v1
 kind: Service
 metadata:
   name: onprem-survival-tcp
   namespace: minecraft
-  annotations:
-    # 10.43.153.44 は k3s クラスタ内の ClusterIP
-    tailscale.com/tailnet-ip: "10.43.153.44"
-    tailscale.com/proxy-class: "autopilot"
 spec:
-  externalName: placeholder
   type: ExternalName
+  externalName: 10.43.153.44
 ---
-# On-Premises MOD TCP Service
+# On-Premises MOD TCP Service via Direct Routing
 apiVersion: v1
 kind: Service
 metadata:
   name: onprem-mod-tcp
   namespace: minecraft
-  annotations:
-    # 10.43.224.226 は k3s クラスタ内の ClusterIP
-    tailscale.com/tailnet-ip: "10.43.224.226"
-    tailscale.com/proxy-class: "autopilot"
 spec:
-  externalName: placeholder
   type: ExternalName
+  externalName: 10.43.224.226
