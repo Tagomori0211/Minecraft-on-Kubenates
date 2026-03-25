@@ -394,6 +394,7 @@ spec:
             - { name: TICK_DISTANCE, value: "8" }
             - { name: PLAYER_IDLE_TIMEOUT, value: "30" }
             - { name: RAKNET_FORCE_MTU, value: "1200" }
+            - { name: DISABLE_CLIENT_VIBRANT_VISUALS, value: "false" }
           ports:
             - containerPort: 19132
               name: bedrock
@@ -512,8 +513,8 @@ spec:
             - name: TS_HOSTNAME
               value: "tak-onprem-k8s-router"
             # k3s Service CIDR を Tailscale ネットワークに広告
-            - name: TS_ROUTES
-              value: "10.43.0.0/16"
+            - name: TS_EXTRA_ARGS
+              value: "--advertise-routes=10.43.0.0/16 --accept-routes"
           volumeMounts:
             - name: tailscale-state
               mountPath: /var/lib/tailscale
