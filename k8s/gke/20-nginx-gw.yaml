@@ -36,9 +36,10 @@ data:
 
         # Bedrock Relay (Native on ubuntu-151 via VPN)
         server {
-            listen 19132 udp;
+            listen 19132 udp reuseport;
             set $bedrock_backend 100.100.135.81:19132;
             proxy_pass $bedrock_backend;
+            proxy_responses 0;
             proxy_timeout 10m;
         }
     }

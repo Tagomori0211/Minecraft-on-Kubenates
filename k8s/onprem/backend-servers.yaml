@@ -393,6 +393,7 @@ spec:
             - { name: VIEW_DISTANCE, value: "48" }
             - { name: TICK_DISTANCE, value: "8" }
             - { name: PLAYER_IDLE_TIMEOUT, value: "30" }
+            - { name: RAKNET_FORCE_MTU, value: "1200" }
           ports:
             - containerPort: 19132
               name: bedrock
