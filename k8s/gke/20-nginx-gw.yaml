@@ -1,21 +1,17 @@
-# ============================================================
-# TAK Pipeline - Nginx Stream Gateway (GKE)
-# ============================================================
-# プレイヤー入口（L4 LB）
-# TCP 25565 --> Velocity (Java)
-# UDP 19132 --> Bedrock (On-prem)
-# ============================================================
-
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: nginx-gw-config
   namespace: minecraft
+  labels:
+    app: nginx-gw
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: tak-pipeline
 data:
   nginx.conf: |
     user nginx;
     worker_processes auto;
-    error_log /var/log/nginx/error.log warn;
+    error_log /dev/stdout warn;
     pid /var/run/nginx.pid;
 
     events {
@@ -24,22 +20,28 @@ data:
 
     stream {
         # GKE kube-dns resolver
-        resolver 10.102.0.10 100.100.100.100 valid=10s;
+        resolver 10.102.0.10 valid=10s;
 
+        log_format basic '$remote_addr [$time_local] '
+                         '$protocol $status $bytes_sent $bytes_received '
+                         '$session_time "$upstream_addr"';
+
+        access_log /dev/stdout basic;
+
+        # Java Edition (Velocity on GKE)
         server {
             listen 25565;
             set $velocity_backend velocity.minecraft.svc.cluster.local:25577;
             proxy_pass $velocity_backend;
             proxy_timeout 10m;
-            proxy_connect_timeout 30s;
         }
 
-        # Bedrock Relay (Native on ubuntu-151 via VPN)
+        # Bedrock Edition (Native BDS on ubuntu-151 via VPN)
+        # Note: Merged into unified gateway due to LB stability
         server {
-            listen 19132 udp reuseport;
-            set $bedrock_backend 100.100.135.81:19132;
+            listen 19132 udp;
+            set $bedrock_backend bedrock-relay-service.minecraft.svc.cluster.local:19132;
             proxy_pass $bedrock_backend;
-            proxy_responses 0;
             proxy_timeout 10m;
         }
     }
@@ -64,11 +66,9 @@ spec:
       labels:
         app: nginx-gw
     spec:
-      # 通常Podとして構成（Spot不使用）
-      terminationGracePeriodSeconds: 30
       containers:
         - name: nginx
-          image: nginx:stable-alpine
+          image: nginx:alpine
           ports:
             - containerPort: 25565
               name: minecraft
@@ -80,17 +80,11 @@ spec:
             - name: config
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
-              readOnly: true
-          resources:
-            requests: { memory: "128Mi", cpu: "100m" }
-            limits: { memory: "256Mi", cpu: "500m" }
-
       volumes:
         - name: config
           configMap:
             name: nginx-gw-config
 
----
 ---
 apiVersion: v1
 kind: Service
@@ -103,7 +97,7 @@ metadata:
     app.kubernetes.io/part-of: tak-pipeline
 spec:
   type: LoadBalancer
-  externalTrafficPolicy: Local
+  externalTrafficPolicy: Cluster
   selector:
     app: nginx-gw
   ports:
@@ -111,23 +105,6 @@ spec:
       port: 25565
       targetPort: 25565
       protocol: TCP
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: nginx-gw-bedrock
-  namespace: minecraft
-  labels:
-    app: nginx-gw
-    app.kubernetes.io/component: gateway
-    app.kubernetes.io/part-of: tak-pipeline
-spec:
-  type: LoadBalancer
-  externalTrafficPolicy: Local
-  selector:
-    app: nginx-gw
-  ports:
     - name: bedrock
       port: 19132
       targetPort: 19132
