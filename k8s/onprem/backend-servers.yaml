@@ -397,6 +397,7 @@ spec:
             - { name: DISABLE_CLIENT_VIBRANT_VISUALS, value: "false" }
           ports:
             - containerPort: 19132
+              hostPort: 19132
               name: bedrock
               protocol: UDP
           volumeMounts:

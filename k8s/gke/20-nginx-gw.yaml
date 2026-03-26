@@ -40,7 +40,7 @@ data:
         # Note: Merged into unified gateway due to LB stability
         server {
             listen 19132 udp;
-            set $bedrock_backend bedrock-relay-service.minecraft.svc.cluster.local:19132;
+            set $bedrock_backend 100.100.135.81:19132;
             proxy_pass $bedrock_backend;
             proxy_timeout 10m;
         }
