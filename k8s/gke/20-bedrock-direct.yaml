@@ -1,0 +1,35 @@
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: bedrock-direct-lb
+  namespace: minecraft
+  labels:
+    kubernetes.io/service-name: bedrock-direct-lb
+addressType: IPv4
+ports:
+  - name: bedrock
+    port: 19132
+    protocol: UDP
+endpoints:
+  - addresses:
+      - "100.100.135.81" # ubuntu-151 Tailscale IP
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bedrock-direct-lb
+  namespace: minecraft
+  annotations:
+    networking.gke.io/load-balancer-type: "External"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Cluster
+  ports:
+    - name: bedrock
+      port: 19132
+      targetPort: 19132
+      protocol: UDP
+  # Selector なし = EndpointSlice/Endpoints を手動指定
