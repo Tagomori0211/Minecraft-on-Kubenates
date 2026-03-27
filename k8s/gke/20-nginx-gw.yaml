@@ -4,9 +4,10 @@ metadata:
   name: nginx-gw-config
   namespace: minecraft
   labels:
-    app: nginx-gw
-    app.kubernetes.io/component: gateway
-    app.kubernetes.io/part-of: tak-pipeline
+    app.kubernetes.io/name: "nginx"
+    app.kubernetes.io/component: "gateway"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
 data:
   nginx.conf: |
     user nginx;
@@ -34,15 +35,7 @@ data:
             set $velocity_backend velocity.minecraft.svc.cluster.local:25577;
             proxy_pass $velocity_backend;
             proxy_timeout 10m;
-        }
-
-        # Bedrock Edition (Native BDS on ubuntu-151 via VPN)
-        # Note: Merged into unified gateway due to LB stability
-        server {
-            listen 19132 udp;
-            set $bedrock_backend 100.100.135.81:19132;
-            proxy_pass $bedrock_backend;
-            proxy_timeout 10m;
+            proxy_connect_timeout 30s;
         }
     }
 
@@ -53,9 +46,10 @@ metadata:
   name: nginx-gw
   namespace: minecraft
   labels:
-    app: nginx-gw
-    app.kubernetes.io/component: gateway
-    app.kubernetes.io/part-of: tak-pipeline
+    app.kubernetes.io/name: "nginx"
+    app.kubernetes.io/component: "gateway"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
 spec:
   replicas: 1
   selector:
@@ -67,6 +61,23 @@ spec:
         app: nginx-gw
     spec:
       containers:
+        - name: bedrock-udp-relay
+          image: alpine/socat:latest
+          command: ["socat"]
+          args:
+            - "UDP4-LISTEN:19132,fork,reuseaddr"
+            - "UDP4:100.100.135.81:19132"
+          ports:
+            - containerPort: 19132
+              name: bedrock
+              protocol: UDP
+          resources:
+            requests:
+              memory: "16Mi"
+              cpu: "10m"
+            limits:
+              memory: "32Mi"
+              cpu: "100m"
         - name: nginx
           image: nginx:alpine
           ports:
@@ -92,9 +103,10 @@ metadata:
   name: nginx-gw-java
   namespace: minecraft
   labels:
-    app: nginx-gw
-    app.kubernetes.io/component: gateway
-    app.kubernetes.io/part-of: tak-pipeline
+    app.kubernetes.io/name: "nginx"
+    app.kubernetes.io/component: "gateway"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Cluster

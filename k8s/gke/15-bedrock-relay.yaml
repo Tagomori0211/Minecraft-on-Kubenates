@@ -4,11 +4,12 @@ metadata:
   name: bedrock-relay
   namespace: minecraft
   labels:
-    app: bedrock-relay
-    app.kubernetes.io/component: proxy-bedrock
-    app.kubernetes.io/part-of: tak-pipeline
+    app.kubernetes.io/name: "bedrock-relay"
+    app.kubernetes.io/component: "proxy"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: bedrock-relay
@@ -66,9 +67,10 @@ metadata:
   name: bedrock-relay-service
   namespace: minecraft
   labels:
-    app: bedrock-relay
-    app.kubernetes.io/component: proxy-bedrock
-    app.kubernetes.io/part-of: tak-pipeline
+    app.kubernetes.io/name: "bedrock-relay"
+    app.kubernetes.io/component: "proxy"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
 spec:
   selector:
     app: bedrock-relay
