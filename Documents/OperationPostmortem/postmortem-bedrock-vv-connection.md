@@ -13,7 +13,7 @@
 | 発生日時 | 2026-03-23 〜 2026-03-27 |
 | 解消日時 | 2026-03-27 12:30 (JST) (VV問題は暫定対応) |
 | 影響範囲 | Bedrock版サーバー: マルチプレイ接続不可 → ワールドクラッシュ → VVグレーアウト |
-| 対応者 | @Tagomori0211 / Claude (クロっち) / Antigravity AI |
+| 対応者 | @Tagomori0211 / Claude  / Antigravity AI |
 
 ---
 
@@ -141,4 +141,4 @@ libc++abi: terminating due to uncaught exception of type gsl::narrowing_error: n
 
 ---
 
-*Created by: @Tagomori0211 / Claude (クロっち)*
+*Created by: @Tagomori0211 / Claude *

@@ -16,7 +16,8 @@ flowchart TB
                 Grafana["Grafana"]
             end
             subgraph GamePods["ゲームプロキシ層"]
-                GW["Nginx GW<br/>25565/TCP<br/>19132/UDP"]
+                GW["Nginx GW<br/>25565/TCP"]
+                Socat["socat<br/>19132/UDP 透過転送"]
                 Velocity["Velocity<br/>ClusterIP"]
                 Lobby["Lobby<br/>Spot Pod"]
             end
@@ -57,13 +58,13 @@ flowchart TB
 
     %% === ゲームトラフィック ===
     Player_Java -->|"25565/TCP"| GW
-    Player_Bedrock -->|"19132/UDP"| GW
+    Player_Bedrock -->|"19132/UDP"| Socat
     GW --> Velocity
     Velocity --> Lobby
 
     %% === GKE → Tailscale → オンプレ ===
     Velocity --->|"VPC Route"| SubnetRouter
-    GW ---->|"UDP Stream (L4 Proxy)"| SubnetRouter
+    Socat ---->|"UDP 透過 (ソースポート維持)"| SubnetRouter
     TS_Net <--> TS_K3s
     TS_K3s --> Java_Survival
     TS_K3s --> Java_Industry
@@ -88,6 +89,7 @@ flowchart TB
 
     %% === スタイル ===
     style GW fill:#00C853,color:#fff
+    style Socat fill:#00897B,color:#fff
     style Velocity fill:#34a853,color:#fff
     style Lobby fill:#fbbc04,color:#000
     style Prometheus fill:#e6522c,color:#fff
