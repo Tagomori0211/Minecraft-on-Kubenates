@@ -1,0 +1,26 @@
+# Default values for minecraft-server.
+
+server:
+  name: "survival"
+  type: "NEOFORGE"
+  version: "1.21.4"
+  neoforgeVersion: "21.4.15" # Set specific version or "latest"
+  memory: "16G"
+  memoryRequest: "16Gi"
+  memoryLimit: "16Gi"
+  cpuRequest: "2000m"
+  cpuLimit: "2000m"
+  jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16M -XX:G1ReservePercent=20"
+  onlineMode: "FALSE"
+
+network:
+  nodePort: 30065
+  serviceType: "NodePort"
+  port: 25565
+
+storage:
+  size: "20Gi"
+
+metrics:
+  enabled: true
+  port: 8080

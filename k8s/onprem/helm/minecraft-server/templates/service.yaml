@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-{{ .Values.server.name }}
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    app.kubernetes.io/name: minecraft-java
+    app.kubernetes.io/component: {{ .Values.server.name }}
+    app.kubernetes.io/managed-by: helm
+    env: prod
+spec:
+  selector:
+    app: mc-{{ .Values.server.name }}
+  type: {{ .Values.network.serviceType }}
+  ports:
+    - port: {{ .Values.network.port }}
+      targetPort: {{ .Values.network.port }}
+      name: minecraft
+{{- if eq .Values.network.serviceType "NodePort" }}
+      nodePort: {{ .Values.network.nodePort }}
+{{- end }}
+{{- if .Values.metrics.enabled }}
+    - port: {{ .Values.metrics.port }}
+      targetPort: {{ .Values.metrics.port }}
+      name: metrics
+{{- end }}

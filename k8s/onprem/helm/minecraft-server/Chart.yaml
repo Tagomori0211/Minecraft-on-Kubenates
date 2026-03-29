@@ -1,0 +1,6 @@
+apiVersion: v2
+name: minecraft-server
+description: A Helm chart for deploying Minecraft Server (NeoForge) to On-Prem k3s
+type: application
+version: 0.1.0
+appVersion: "latest"

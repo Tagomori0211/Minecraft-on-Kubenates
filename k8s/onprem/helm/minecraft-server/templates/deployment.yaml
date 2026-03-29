@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-{{ .Values.server.name }}
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    app.kubernetes.io/name: minecraft-java
+    app.kubernetes.io/component: {{ .Values.server.name }}
+    app.kubernetes.io/managed-by: helm
+    env: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mc-{{ .Values.server.name }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mc-{{ .Values.server.name }}
+        app.kubernetes.io/component: {{ .Values.server.name }}
+      annotations:
+        prometheus.io/scrape: "{{ .Values.metrics.enabled }}"
+        prometheus.io/port: "{{ .Values.metrics.port }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: minecraft
+          image: itzg/minecraft-server:latest
+          env:
+            - { name: EULA, value: "TRUE" }
+            - { name: TYPE, value: "{{ .Values.server.type }}" }
+            - { name: VERSION, value: "{{ .Values.server.version }}" }
+{{- if eq .Values.server.type "NEOFORGE" }}
+            - { name: NEOFORGE_VERSION, value: "{{ .Values.server.neoforgeVersion }}" }
+{{- end }}
+            - { name: MEMORY, value: "{{ .Values.server.memory }}" }
+            - { name: ONLINE_MODE, value: "{{ .Values.server.onlineMode }}" }
+            - { name: ENABLE_QUERY, value: "true" }
+            - { name: TZ, value: "Asia/Tokyo" }
+            - name: JVM_XX_OPTS
+              value: "{{ .Values.server.jvmOpts }}"
+          ports:
+            - containerPort: {{ .Values.network.port }}
+              name: minecraft
+          volumeMounts:
+            - mountPath: /data
+              name: data
+          resources:
+            requests:
+              memory: "{{ .Values.server.memoryRequest }}"
+              cpu: "{{ .Values.server.cpuRequest }}"
+            limits:
+              memory: "{{ .Values.server.memoryLimit }}"
+              cpu: "{{ .Values.server.cpuLimit }}"
+          startupProbe:
+            tcpSocket: { port: {{ .Values.network.port }} }
+            initialDelaySeconds: 120
+            periodSeconds: 15
+            failureThreshold: 40
+          livenessProbe:
+            tcpSocket: { port: {{ .Values.network.port }} }
+            periodSeconds: 60
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["mc-health"]
+            initialDelaySeconds: 180
+            periodSeconds: 15
+{{- if .Values.metrics.enabled }}
+        - name: mc-monitor
+          image: itzg/mc-monitor:latest
+          args: ["export-for-prometheus"]
+          env:
+            - { name: EXPORT_SERVERS, value: "localhost:{{ .Values.network.port }}" }
+            - { name: DEBUG, value: "false" }
+          ports:
+            - containerPort: {{ .Values.metrics.port }}
+              name: metrics
+          resources:
+            requests: { memory: "32Mi", cpu: "10m" }
+            limits: { memory: "64Mi", cpu: "100m" }
+{{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pvc-{{ .Values.server.name }}

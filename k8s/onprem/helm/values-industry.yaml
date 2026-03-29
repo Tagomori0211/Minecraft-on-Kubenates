@@ -1,0 +1,24 @@
+server:
+  name: "mod"
+  type: "NEOFORGE"
+  version: "1.21.1"
+  neoforgeVersion: "latest"
+  memory: "30G"
+  memoryRequest: "30Gi"
+  memoryLimit: "30Gi"
+  cpuRequest: "4000m"
+  cpuLimit: "4000m"
+  jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=32M -XX:G1ReservePercent=20 -XX:+UnlockExperimentalVMOptions -XX:G1MixedGCCountTarget=4 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40"
+  onlineMode: "FALSE"
+
+network:
+  nodePort: 30066
+  serviceType: "NodePort"
+  port: 25565
+
+storage:
+  size: "30Gi"
+
+metrics:
+  enabled: true
+  port: 8080
