@@ -79,7 +79,7 @@ spec:
           env:
             - { name: EULA, value: "TRUE" }
             - { name: TYPE, value: "PAPER" }
-            - { name: VERSION, value: "1.21.4" }
+            - { name: VERSION, value: "1.21.1" }
             - { name: MEMORY, value: "512M" }
             - { name: MAX_MEMORY, value: "512M" }
             - { name: ONLINE_MODE, value: "FALSE" } # Velocity proxy経由
