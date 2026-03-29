@@ -10,6 +10,35 @@ server:
   cpuLimit: "4000m"
   jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=32M -XX:G1ReservePercent=20 -XX:+UnlockExperimentalVMOptions -XX:G1MixedGCCountTarget=4 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40"
   onlineMode: "FALSE"
+  mods:
+    - "mekanism"
+    - "mekanism-additions"
+    - "mekanism-generators"
+    - "mekanism-tools"
+    - "trash-cans"
+    - "ae2"
+    - "applied-energistics-2-wireless-terminals"
+    - "applied-mekanistics"
+    - "cc-tweaked"
+    - "botany-pots"
+    - "botany-trees"
+    - "mekanismmoremachine"
+    - "mekanism-lasers"
+    - "mekanismmoremodules"
+    - "mekanism_extra"
+    - "evolved-mekanism"
+    - "classicperipherals"
+  extraEnv:
+    - name: MODRINTH_ALLOWED_VERSION_TYPE
+      value: "alpha"
+    - name: MODRINTH_DOWNLOAD_DEPENDENCIES
+      value: "REQUIRED"
+    - name: CF_PROJECTS
+      value: "543592" # Mekanism Turrets
+    - name: CF_DOWNLOAD_DEPENDENCIES
+      value: "REQUIRED"
+    - name: CF_ALLOWED_VERSION_TYPE
+      value: "alpha"
 
 network:
   nodePort: 30066

@@ -10,6 +10,49 @@ server:
   cpuLimit: "2000m"
   jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16M -XX:G1ReservePercent=20"
   onlineMode: "FALSE"
+  mods:
+    - "yungs-api"
+    - "yungs-better-nether-fortresses"
+    - "yungs-better-dungeons"
+    - "yungs-better-jungle-temples"
+    - "yungs-better-ocean-monuments"
+    - "yungs-better-mineshafts"
+    - "yungs-better-end-island"
+    - "yungs-better-strongholds"
+    - "yungs-better-witch-huts"
+    - "yungs-better-desert-temples"
+    - "yungs-extras"
+    - "yungs-better-caves"
+    - "farmers-delight"
+    - "sophisticated-backpacks"
+    - "sophisticated-core"
+    - "waystones"
+    - "handcrafted"
+    - "resourceful-lib"
+    - "chipped"
+    - "torchmaster"
+    - "aquaculture"
+    - "aquaculture-delight"
+    - "ends-delight"
+    - "expanded-delight"
+    - "my-nethers-delight"
+    - "more-delight"
+    - "brewin-and-chewin"
+    - "crabbers-delight"
+    - "rustic-delight"
+    - "trailtales-delight"
+    - "cultural-delights"
+  extraEnv:
+    - name: MODRINTH_ALLOWED_VERSION_TYPE
+      value: "alpha"
+    - name: MODRINTH_DOWNLOAD_DEPENDENCIES
+      value: "REQUIRED"
+    - name: CF_PROJECTS
+      value: "227639,306345,246763" # Twilight Forest, TerraBlender, GeckoLib
+    - name: CF_DOWNLOAD_DEPENDENCIES
+      value: "REQUIRED"
+    - name: CF_ALLOWED_VERSION_TYPE
+      value: "alpha"
 
 network:
   nodePort: 30065

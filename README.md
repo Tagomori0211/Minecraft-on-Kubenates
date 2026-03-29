@@ -250,7 +250,7 @@ variable "enable_spot_only" {
 ```
 
 ```yaml
-# Kubernetes: Spot Pod toleration (Velocity / Lobby)
+# Kubernetes: Spot Pod toleration (Lobby)
 nodeSelector:
   cloud.google.com/gke-spot: "true"
 tolerations:
@@ -259,6 +259,12 @@ tolerations:
     value: "true"
     effect: "NoSchedule"
 ```
+
+| 項目 | 通常 Pod (Standard) | Spot Pod (採用中) | 削減額 |
+|------|---------------------|-------------------|--------|
+| vCPU (0.25) | ~$8.12 | ~$0.73 | -$7.39 |
+| メモリ (0.5GB) | ~$1.79 | ~$0.16 | -$1.63 |
+| 合計 | ~$9.91 (約1,500円) | ~$0.89 (約135円) | 約91% OFF |
 
 **効果**: GKE Autopilotの通常Podと比較して**最大91%のコスト削減**
 
@@ -442,7 +448,7 @@ kubectl create secret generic cloudflare-tunnel-secret \
 
 | 指標 | 結果 |
 |------|------|
-| **月間インフラコスト** | 約$15-20（Spot Pod + オンプレ + さくらVPS併用） |
+| **月間インフラコスト** | 約$15-20（Spot Pod + オンプレ） |
 | **グローバル遅延** | 東京リージョン経由で国内100ms以下 |
 | **デプロイ時間** | Terraform + Ansible で約15分 |
 | **可用性** | Spot中断時も30秒以内に自動復旧 |

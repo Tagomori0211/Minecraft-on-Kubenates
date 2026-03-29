@@ -12,7 +12,25 @@ server:
   cpuLimit: "2000m"
   jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16M -XX:G1ReservePercent=20"
   onlineMode: "FALSE"
-  mods: []
+  mods:
+    - "journeymap"
+    - "emi"
+    - "jade"
+    - "appleskin"
+    - "embeddium"
+    - "cosmetic-armor-reworked-forked"
+    - "modernfix"
+    - "neat"
+    - "trashslot"
+    - "balm"
+    - "leaves-be-gone"
+    - "puzzles-lib"
+    - "netherportalfix"
+    - "gravestone-mod"
+    - "liteminer"
+    - "amber"
+    - "carry-on"
+    - "connected-glass"
   extraEnv: []
 
 network:
