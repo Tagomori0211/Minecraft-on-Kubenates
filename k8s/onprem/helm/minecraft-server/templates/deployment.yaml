@@ -60,8 +60,12 @@ spec:
             - { name: TZ, value: "Asia/Tokyo" }
             - name: JVM_XX_OPTS
               value: "{{ .Values.server.jvmOpts }}"
-{{- if and .Values.velocity.enabled (eq .Values.server.type "NEOFORGE") }}
-            - { name: MODRINTH_PROJECTS, value: "neoforged-velocity-support" }
+{{- if or .Values.velocity.enabled .Values.server.mods }}
+            - name: MODRINTH_PROJECTS
+              value: {{ (concat (list "neoforged-velocity-support") (default (list) .Values.server.mods)) | join "," | quote }}
+{{- end }}
+{{- with .Values.server.extraEnv }}
+{{ toYaml . | nindent 12 }}
 {{- end }}
           ports:
             - containerPort: {{ .Values.network.port }}

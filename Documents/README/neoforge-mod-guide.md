@@ -1,76 +1,80 @@
-# NeoForgeサーバーへのMOD追加ガイド
+# NeoForgeサーバーへのMOD追加ガイド (詳細版)
 
-このドキュメントでは、本プロジェクトのHelm Chart (`minecraft-server`) を使用して、NeoForgeサーバーにMODを追加・管理する方法について説明します。
+このドキュメントでは、本プロジェクトのHelm Chart (`minecraft-server`) を使用して、NeoForgeサーバーにMODを追加・管理する方法を解説します。
 
 ---
 
-## 1. Modrinthからの自動ダウンロード (推奨)
+## 1. 設定ファイルの場所と役割
 
-最も簡単で管理しやすい方法です。`itzg/minecraft-server` イメージの機能を利用して、起動時にModrinthからMODを自動取得します。
+本プロジェクトでは、設定を以下の場所で管理しています。混同しないよう注意してください。
 
-### 設定画面 (`values-survival.yaml` など)
-`MODRINTH_PROJECTS` 環境変数を追加するようにマニフェストを構成、または直接 `values` に追記します。
-※現状のテンプレートでは、特定のMOD（Velocity Support等）が条件付きで追加されるようになっていますが、汎用的に追加する場合は以下のように記述します。
+- **`ROOT/.env`**: プロジェクト全体の共通設定（GCPプロジェクトID、Tailscaleキー、Velocity共通シークレットなど）を保持する秘密ファイルです。通常、ここを編集してMODを追加することはありません。
+- **`k8s/onprem/helm/minecraft-server/values.yaml`**: 全Javaサーバーの **共通デフォルト設定** です。ここにMODを追加すると、SurvivalとIndustryの両方に反映されます。
+- **`k8s/onprem/helm/values-survival.yaml`**: **生活鯖 (Survival)** 専用の設定。
+- **`k8s/onprem/helm/values-industry.yaml`**: **工業鯖 (Industry)** 専用の設定。
 
-#### 手順
-1. `k8s/onprem/helm/values-survival.yaml` を開く。
-2. 他のMODを追加したい場合、`env` セクション（未定義の場合は追加）に `MODRINTH_PROJECTS` を記述します。
+---
+
+## 2. MODの探し方 (Modrinth)
+
+本環境では [Modrinth](https://modrinth.com/) に対応しています。
+
+### Webで探す
+1. Modrinthのサイトへ行き、`Categories: NeoForge` および `Versions: 1.21.1` でフィルターします。
+2. 追加したいMODのページURL末尾にある **slug** (例: `xaeros-minimap`) をメモします。
+
+### CLIで探す (サーバー上で実行可能)
+```bash
+# 例: radarに関連するMODを探す
+curl -sG 'https://api.modrinth.com/v2/search' \
+  --data-urlencode 'query=radar' \
+  --data-urlencode 'facets=[["categories:neoforge"],["versions:1.21.1"]]' \
+  | python3 -c "import sys, json; [print(f\"{h['title']}: {h['slug']}\") for h in json.load(sys.stdin)['hits']]"
+```
+
+---
+
+## 3. MOD導入の具体例: レーダーMOD (Xaero's Minimap)
+
+### ケースA: 工業鯖 (Industry) だけに導入する場合
+`k8s/onprem/helm/values-industry.yaml` を編集します。
 
 ```yaml
-# 例: values-survival.yaml への追記イメージ
 server:
-  # ... 既存設定
-  extraEnv:
-    - name: MODRINTH_PROJECTS
-      value: "fabric-api,sodium,iris" # ModrinthのslugまたはIDをカンマ区切りで指定
+  mods:
+    - "xaeros-minimap"
+    # 他にもあれば追加
+    # - "another-mod-slug"
 ```
 
-> [!NOTE]
-> 現在の `deployment.yaml` テンプレートでは `extraEnv` を処理するロジックが必要です。必要に応じて `templates/deployment.yaml` に `{{- with .Values.server.extraEnv }}{{ toYaml . | nindent 12 }}{{ end }}` を追記してください。
+### ケースB: 生活鯖と工業鯖、両方に導入する場合
+`k8s/onprem/helm/minecraft-server/values.yaml` (共通設定) を編集するか、両方の `values-*.yaml` に記述します。
+
+```yaml
+server:
+  mods:
+    - "xaeros-minimap"
+```
 
 ---
 
-## 2. 独自のMODファイルを直接配置する場合
+## 4. 設定の反映手順
 
-Modrinthにない自作MODや、特定のビルド済みJARファイルを使用する場合です。
-
-### 手順
-1. **一時的なPod (`edit-helper` 等) を利用してアップロード**
-   PVC (`pvc-survival` 等) をマウントした管理用Podに `kubectl cp` でファイルを送ります。
-
-   ```bash
-   # ローカルのMODファイルをサーバーのmodsフォルダへコピー
-   kubectl cp my-custom-mod.jar minecraft/edit-helper:/data/mods/
-   ```
-
-2. **サーバーの再起動**
-   ファイルの配置後、Deploymentを再起動することでMODが読み込まれます。
-
-   ```bash
-   kubectl rollout restart deployment deploy-survival -n minecraft
-   ```
-
----
-
-## 3. 依存関係とバージョンの確認
-
-NeoForgeでは、MODが要求する **NeoForge本体のバージョン** と **Minecraftのバージョン** が一致している必要があります。
-
-- **Minecraft Version**: `1.21.1` (固定中)
-- **NeoForge Version**: `latest` (または `values.yaml` で指定したバージョン)
-
-新しいMODを追加した後にサーバーが起動しない（CrashLoopBackOff）場合は、ログを確認してください。
+ファイルを編集・保存したら、以下のコマンドでクラスターに適用します。
 
 ```bash
-kubectl logs -f deploy-survival-<pod-id> -c minecraft -n minecraft
+# 生活鯖への反映
+helm --kubeconfig k8s/onprem/onprem_kubeconfig.yaml upgrade mc-survival k8s/onprem/helm/minecraft-server -f k8s/onprem/helm/values-survival.yaml -n minecraft
+
+# 工業鯖への反映
+helm --kubeconfig k8s/onprem/onprem_kubeconfig.yaml upgrade mc-industry k8s/onprem/helm/minecraft-server -f k8s/onprem/helm/values-industry.yaml -n minecraft
 ```
+
+適用後、サーバーが再起動し、起動ログに `Downloaded /data/mods/xaeros-minimap-xxx.jar` と表示されれば成功です。
 
 ---
 
-## 4. プロキシ (Velocity) 対応の注意点
+## 5. 補足: 既に導入済みの必須MOD
+以下のMODは、システムの動作上、テンプレート側で自動的に追加されるようになっています。これらを `mods` リストに手動で書く必要はありません。
 
-新しくMODサーバーを追加する場合、以下の要素が必須です。
-
-- **Velocity Support MOD**: Velocityからの接続を許可するために必須です（自動導入設定済み）。
-- **forwarding.secret**: プロキシとの認証用シークレットです（`initContainer` で自動配置設定済み）。
-- **オンラインモード**: `ONLINE_MODE: "FALSE"` に設定する必要があります（プロキシが認証を担当するため）。
+- **neoforged-velocity-support**: Velocityプロキシ経由の接続を許可するために自動注入されます。

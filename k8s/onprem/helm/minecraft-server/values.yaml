@@ -12,6 +12,8 @@ server:
   cpuLimit: "2000m"
   jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16M -XX:G1ReservePercent=20"
   onlineMode: "FALSE"
+  mods: []
+  extraEnv: []
 
 network:
   nodePort: 30065
