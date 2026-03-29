@@ -71,6 +71,7 @@ spec:
           env:
             - { name: TYPE, value: "VELOCITY" }
             - { name: VELOCITY_VERSION, value: "3.4.0-SNAPSHOT" }
+            - { name: VERSION, value: "1.21.1" }
             - { name: TZ, value: "Asia/Tokyo" }
             - { name: MEMORY, value: "256M" }
             - { name: INIT_MEMORY, value: "256M" }
