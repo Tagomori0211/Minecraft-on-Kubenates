@@ -40,11 +40,11 @@ data:
     # GKE内 Lobby（ClusterIP サービス名で接続）
     lobby = "lobby:25566"
 
-    # オンプレミス Survival（Tailscale subnet-router 経由でk3s ClusterIPに到達）
-    survival = "10.43.31.237:25565"
+    # オンプレミス Survival（Tailscale IP + NodePort経由）
+    survival = "100.100.135.81:30065"
 
     # オンプレミス Java-Indicatory MOD（NeoForge）
-    mod = "10.43.188.221:25565"
+    mod = "100.100.135.81:30066"
 
     # 接続時の最初のサーバー（フォールバック順）
     try = ["lobby"]

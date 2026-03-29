@@ -182,10 +182,11 @@ metadata:
 spec:
   selector:
     app: mc-survival
-  type: ClusterIP
+  type: NodePort
   ports:
     - port: 25565
       name: minecraft
+      nodePort: 30065
     - port: 8080
       name: metrics
 
@@ -318,10 +319,11 @@ metadata:
 spec:
   selector:
     app: mc-mod
-  type: ClusterIP
+  type: NodePort
   ports:
     - port: 25565
       name: minecraft
+      nodePort: 30066
     - port: 8080
       name: metrics
 
