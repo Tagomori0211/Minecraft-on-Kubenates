@@ -24,3 +24,8 @@ storage:
 metrics:
   enabled: true
   port: 8080
+
+velocity:
+  enabled: false
+  secretName: "velocity-secret"
+  secretKey: "velocity-forwarding-secret"

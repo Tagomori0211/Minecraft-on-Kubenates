@@ -22,3 +22,6 @@ storage:
 metrics:
   enabled: true
   port: 8080
+
+velocity:
+  enabled: true
