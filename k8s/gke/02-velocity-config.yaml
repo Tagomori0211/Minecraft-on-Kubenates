@@ -21,7 +21,7 @@ data:
   velocity.toml: |
     bind = "0.0.0.0:25577"
 
-    motd = "<gradient:#34a853:#4285f4>すしすきー</gradient> <gray>|</gray> <white>Minecraft Server</white>"
+    motd = "すしすきーマイクラサーバー"
     show-max-players = 100
 
     # Mojang認証（オンラインモード）
