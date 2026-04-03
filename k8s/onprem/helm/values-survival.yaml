@@ -12,6 +12,9 @@ server:
   onlineMode: "FALSE"
   mods:
     - "yungs-api"
+    - "terrablender"
+    - "architectury-api"
+    - "geckolib"
     - "yungs-better-nether-fortresses"
     - "yungs-better-dungeons"
     - "yungs-better-jungle-temples"
@@ -23,6 +26,7 @@ server:
     - "yungs-better-desert-temples"
     - "yungs-extras"
     - "yungs-better-caves"
+    - "yungs-cave-biomes"
     - "farmers-delight"
     - "sophisticated-backpacks"
     - "sophisticated-core"
@@ -48,7 +52,9 @@ server:
     - name: MODRINTH_DOWNLOAD_DEPENDENCIES
       value: "REQUIRED"
     - name: CF_PROJECTS
-      value: "227639,306345,246763" # Twilight Forest, TerraBlender, GeckoLib
+      value: "306345,246763" # TerraBlender, GeckoLib (Already on client/server mostly)
+    - name: MODS
+      value: "https://www.curseforge.com/api/v1/mods/227639/files/7797302/download"
     - name: CF_DOWNLOAD_DEPENDENCIES
       value: "REQUIRED"
     - name: CF_ALLOWED_VERSION_TYPE

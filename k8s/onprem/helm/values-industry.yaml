@@ -11,6 +11,42 @@ server:
   jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=32M -XX:G1ReservePercent=20 -XX:+UnlockExperimentalVMOptions -XX:G1MixedGCCountTarget=4 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40"
   onlineMode: "FALSE"
   mods:
+    - "twilight-forest"
+    - "yungs-api"
+    - "terrablender"
+    - "architectury-api"
+    - "geckolib"
+    - "yungs-better-nether-fortresses"
+    - "yungs-better-dungeons"
+    - "yungs-better-jungle-temples"
+    - "yungs-better-ocean-monuments"
+    - "yungs-better-mineshafts"
+    - "yungs-better-end-island"
+    - "yungs-better-strongholds"
+    - "yungs-better-witch-huts"
+    - "yungs-better-desert-temples"
+    - "yungs-extras"
+    - "yungs-better-caves"
+    - "yungs-cave-biomes"
+    - "farmers-delight"
+    - "sophisticated-backpacks"
+    - "sophisticated-core"
+    - "waystones"
+    - "handcrafted"
+    - "resourceful-lib"
+    - "chipped"
+    - "torchmaster"
+    - "aquaculture"
+    - "aquaculture-delight"
+    - "ends-delight"
+    - "expanded-delight"
+    - "my-nethers-delight"
+    - "more-delight"
+    - "brewin-and-chewin"
+    - "crabbers-delight"
+    - "rustic-delight"
+    - "trailtales-delight"
+    - "cultural-delights"
     - "mekanism"
     - "mekanism-additions"
     - "mekanism-generators"
@@ -19,26 +55,25 @@ server:
     - "ae2"
     - "applied-energistics-2-wireless-terminals"
     - "applied-mekanistics"
-    - "cc-tweaked"
     - "botany-pots"
     - "botany-trees"
     - "mekanismmoremachine"
     - "mekanism-lasers"
-    - "mekanismmoremodules"
     - "mekanism_extra"
     - "evolved-mekanism"
-    - "classicperipherals"
   extraEnv:
     - name: MODRINTH_ALLOWED_VERSION_TYPE
       value: "alpha"
     - name: MODRINTH_DOWNLOAD_DEPENDENCIES
       value: "REQUIRED"
-    - name: CF_PROJECTS
-      value: "543592" # Mekanism Turrets
     - name: CF_DOWNLOAD_DEPENDENCIES
       value: "REQUIRED"
     - name: CF_ALLOWED_VERSION_TYPE
       value: "alpha"
+    - name: CF_PROJECTS
+      value: "306345,246763" # TerraBlender, GeckoLib
+    - name: MODS
+      value: "https://www.curseforge.com/api/v1/mods/227639/files/7797302/download"
 
 network:
   nodePort: 30066
