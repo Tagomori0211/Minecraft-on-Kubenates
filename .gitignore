@@ -178,7 +178,7 @@ cython_debug/
 # Context and Documentation
 sushiski-infra-context.md
 Documents/architecture/roadmap.mermaid
-*.png
+
 
 # GKE / Cloud Secrets
 **/*_gcloud_auth_plugin_cache
