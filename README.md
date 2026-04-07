@@ -39,7 +39,7 @@ Infrastructure as Code（IaC）を全面採用し、**Terraform / Ansible / Kube
 ## 🏗️ アーキテクチャ
 
 最新は[mermaid](Documents/architecture/infrastructure.mermaid)参照。
-![infrastructure](Documents/architecture/minecraft_k3s_v5.png)
+![infrastructure](Documents/architecture/infrastructure.svg)
 ---
 
 ## 🛠️ 技術スタック

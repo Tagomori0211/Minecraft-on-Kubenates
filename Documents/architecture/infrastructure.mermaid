@@ -71,14 +71,14 @@ end
     %% === GKE → Tailscale → オンプレ ===
     Velocity --->|"VPC Route"| SubnetRouter
     Socat ---->|"UDP 透過 (ソースポート維持)"| SubnetRouter
-    TS_Net <--> TS_K3s
+    TS_Net <----> TS_K3s
     
     
     TS_K3s --> Java_Survival
     TS_K3s --> Java_Industry
     TS_K3s --> Bedrock
     
-    SubnetRouter <--->|"Tunnel"| TS_Net
+    SubnetRouter <-->|"Tunnel"| TS_Net
 
     %% === Status Platform ===
     User ------->|"HTTPS"| CF_Tunnel
@@ -88,7 +88,7 @@ end
 
     %% === 管理者・監視 ===
     direction LR
-        Admin --->|"Tailscale (100.94.84.51:30300)"| Grafana
+        Admin -->|"Tailscale (100.94.84.51:30300)"| Grafana
         Grafana -.-> Prometheus
         Prometheus -.->|"Scrape (TS/Local)"| TS_K3s
         Prometheus -.->|"Scrape (TS)"| SubnetRouter
