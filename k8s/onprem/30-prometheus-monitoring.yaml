@@ -1,0 +1,220 @@
+# ============================================================
+# TAK Pipeline - Monitoring Stack (On-Premise k3s)
+# ============================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring-prometheus
+  labels:
+    app.kubernetes.io/name: "monitoring-prometheus"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
+
+---
+# ============================================================
+# Prometheus Storage (PVC)
+# ============================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-storage-pvc
+  namespace: monitoring-prometheus
+  labels:
+    app.kubernetes.io/name: "prometheus"
+    app.kubernetes.io/component: "monitoring"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+# ============================================================
+# Prometheus ConfigMap
+# ============================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-server-cm
+  namespace: monitoring-prometheus
+  labels:
+    app.kubernetes.io/name: "prometheus"
+    app.kubernetes.io/component: "monitoring"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
+data:
+  prometheus.yml: |-
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      # ── GKE 内サービス（Tailscale経由でアクセス） ──────────────────
+      # GKE側のサービスを監視するには、GKEのTailscale IPまたは固定ルーティングが必要
+      - job_name: 'velocity'
+        static_configs:
+          - targets: ['velocity.minecraft.svc.cluster.local:8080'] # TODO: GKE内のTailscale経由IPへ置換
+            labels: { location: gke, component: velocity }
+
+      - job_name: 'lobby'
+        static_configs:
+          - targets: ['lobby.minecraft.svc.cluster.local:8080'] # TODO: GKE内のTailscale経由IPへ置換
+            labels: { location: gke, component: lobby }
+
+      # ── オンプレミス MinecraftServer（直接ClusterIP / サービス名）
+      - job_name: 'survival'
+        static_configs:
+          - targets: ['svc-survival.minecraft.svc.cluster.local:8080']
+            labels: { location: onprem, component: survival }
+
+      - job_name: 'mod'
+        static_configs:
+          - targets: ['svc-mod.minecraft.svc.cluster.local:8080']
+            labels: { location: onprem, component: mod }
+
+      - job_name: 'bedrock'
+        static_configs:
+          - targets: ['svc-bedrock.minecraft.svc.cluster.local:8080']
+            labels: { location: onprem, component: bedrock }
+
+      # ── オンプレミス AppServer
+      - job_name: 'kotlin-api'
+        static_configs:
+          - targets: ['10.43.1.10:8080']
+            labels: { location: onprem-app, component: kotlin-api }
+
+      # ── さくらVPS Nginx
+      - job_name: 'nginx-sakura'
+        static_configs:
+          - targets: ['100.64.0.20:9113']
+            labels: { location: sakura-vps, component: nginx-proxy }
+
+---
+# ============================================================
+# Prometheus Deployment
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-server
+  namespace: monitoring-prometheus
+  labels:
+    app.kubernetes.io/name: "prometheus"
+    app.kubernetes.io/component: "monitoring"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "prometheus"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "prometheus"
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/monitoring: "true"
+      securityContext:
+        fsGroup: 65534
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=30d"
+          ports:
+            - containerPort: 9090
+              name: http
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus/
+            - name: prometheus-storage
+              mountPath: /prometheus/
+          resources:
+            requests: { memory: "512Mi", cpu: "250m" }
+            limits: { memory: "1Gi", cpu: "1000m" }
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-server-cm
+        - name: prometheus-storage
+          persistentVolumeClaim:
+            claimName: prometheus-storage-pvc
+
+---
+# ============================================================
+# Grafana Deployment
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring-prometheus
+  labels:
+    app.kubernetes.io/name: "grafana"
+    app.kubernetes.io/component: "monitoring"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "grafana"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "grafana"
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/monitoring: "true"
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin" # 必要に応じてSecret化
+            - name: GF_SERVER_ROOT_URL
+              value: "http://tak-grafana-onprem"
+          resources:
+            requests: { memory: "256Mi", cpu: "100m" }
+            limits: { memory: "512Mi", cpu: "500m" }
+
+---
+# ============================================================
+# Services
+# ============================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+  namespace: monitoring-prometheus
+spec:
+  selector:
+    app.kubernetes.io/name: "prometheus"
+  ports:
+    - port: 9090
+      targetPort: 9090
+      name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  namespace: monitoring-prometheus
+spec:
+  selector:
+    app.kubernetes.io/name: "grafana"
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http
