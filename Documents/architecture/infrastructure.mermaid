@@ -11,17 +11,12 @@ flowchart TB
         direction TB
         
         subgraph GKE["GKE Autopilot"]
-            subgraph MonPods["監視層"]
-                Prometheus["Prometheus"]
-                Grafana["Grafana"]
-            end
             subgraph GamePods["ゲームプロキシ層"]
                 GW["Nginx GW<br/>25565/TCP"]
                 Socat["socat<br/>19132/UDP 透過転送"]
                 Velocity["Velocity<br/>ClusterIP"]
                 Lobby["Lobby<br/>Spot Pod"]
             end
-            
         end
         subgraph transform01["a"]
         direction TB
@@ -33,27 +28,38 @@ flowchart TB
         TS_Net["Tailscale仮想LAN"]
     end
 
-    subgraph Onprem["オンプレ: Ryzen 5700G / 64GB"]
-        subgraph Worker["k3s-worker VM (58Gi)"]
-            TS_K3s["Tailscale Client"]
-            subgraph GameServers["ゲームサーバー"]
-                subgraph Experimental["実験的 (Java)"]
-                    Java_Survival["Survival<br/>16Gi"]
-                    Java_Industry["Industry MOD<br/>30Gi"]
+    subgraph Onprem["オンプレミス環境"]
+        subgraph Machine1["Ryzen 5700G / 64GB"]
+            subgraph Worker["k3s-worker VM"]
+                TS_K3s["Tailscale Client"]
+                subgraph GameServers["ゲームサーバー"]
+                    subgraph Experimental["実験的 (Java)"]
+                        Java_Survival["Survival<br/>16Gi"]
+                        Java_Industry["Industry MOD<br/>30Gi"]
+                    end
+                    subgraph Conservative["安定 (Bedrock)"]
+                        Bedrock["Bedrock (BDS)<br/>8Gi / 16-Thread<br/>hostPort 19132"]
+                    end
                 end
-                subgraph Conservative["安定 (Bedrock)"]
-                    Bedrock["Bedrock (BDS)<br/>8Gi / 16-Thread<br/>hostPort 19132"]
+                subgraph SP["Status Platform"]
+                    direction TB
+                    CF_Tunnel["CF Tunnel"]
+                    Flutter["Flutter Web"]
+                    Envoy["Envoy"]
+                    Kotlin["Kotlin API"]
                 end
-            end
-            subgraph SP["Status Platform"]
-                direction TB
-                CF_Tunnel["CF Tunnel"]
-                Flutter["Flutter Web"]
-                Envoy["Envoy"]
-                Kotlin["Kotlin API<br/>Ktor + gRPC"]
             end
         end
-        
+
+        subgraph Machine2["s3 (Xeon E5-2470 v2)"]
+            subgraph MonNode["k3s-monitoring VM"]
+                TS_Mon["Tailscale Client"]
+                subgraph MonPods["監視スタック"]
+                    Prometheus["Prometheus"]
+                    Grafana["Grafana"]
+                end
+            end
+        end
     end
 
     %% === ゲームトラフィック ===
@@ -66,37 +72,37 @@ flowchart TB
     Velocity --->|"VPC Route"| SubnetRouter
     Socat ---->|"UDP 透過 (ソースポート維持)"| SubnetRouter
     TS_Net <--> TS_K3s
+    TS_Net <--> TS_Mon
+    
     TS_K3s --> Java_Survival
     TS_K3s --> Java_Industry
     TS_K3s --> Bedrock
     
     SubnetRouter <-->|"Tunnel"| TS_Net
+
     %% === Status Platform ===
     User ------->|"HTTPS"| CF_Tunnel
-    direction TB
     CF_Tunnel --> Flutter
     Flutter --> Envoy
     Envoy --> Kotlin
 
-    
-
     %% === 管理者・監視 ===
-    Admin -->|"Tailscale"| Grafana
+    Admin -->|"Tailscale (100.94.84.51:30300)"| Grafana
     Grafana -.-> Prometheus
-    Prometheus -.->|"VPC Route"| SubnetRouter
-
-    
+    Prometheus -.->|"Scrape (TS/Local)"| TS_K3s
+    Prometheus -.->|"Scrape (TS)"| SubnetRouter
 
     %% === スタイル ===
     style GW fill:#00C853,color:#fff
     style Socat fill:#00897B,color:#fff
     style Velocity fill:#34a853,color:#fff
     style Lobby fill:#fbbc04,color:#000
-    style Prometheus fill:#e6522c,color:#fff
-    style Grafana fill:#f46800,color:#fff
     style SubnetRouter fill:#8B5CF6,color:#fff
     style TS_Net fill:#333,color:#fff
     style TS_K3s fill:#555,color:#fff
+    style TS_Mon fill:#555,color:#fff
+    style Prometheus fill:#e6522c,color:#fff
+    style Grafana fill:#f46800,color:#fff
     style Java_Survival fill:#2E7D32,color:#fff
     style Java_Industry fill:#1B5E20,color:#fff
     style Bedrock fill:#ea4335,color:#fff
@@ -104,9 +110,10 @@ flowchart TB
     style Flutter fill:#02569B,color:#fff
     style Envoy fill:#AC6199,color:#fff
     style Kotlin fill:#7F52FF,color:#fff
+    
     style GamePods fill:#0d1117,color:#c9d1d9,stroke:#30363d
-    style MonPods fill:#0d1117,color:#c9d1d9,stroke:#30363d
     style GameServers fill:#0d1117,color:#c9d1d9,stroke:#30363d
+    style MonPods fill:#0d1117,color:#c9d1d9,stroke:#30363d
     style Experimental fill:#1a1a2e,color:#4ade80,stroke:#4ade80
     style Conservative fill:#1a1a2e,color:#f87171,stroke:#f87171
     style SP fill:#0d1117,color:#c9d1d9,stroke:#30363d
