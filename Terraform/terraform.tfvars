@@ -17,13 +17,26 @@ common_config = {
 # VMリスト
 vms = {
   # シングルノード: オンプレ：k3s-worker (Java/Bedrock マイクラゲームサーバー用 + Status Platform)
-  "k3s-worker" = {
-    vmid      = 105
-    desc      = "Single K3s Node for all services (Minecraft + Infrastructure)"
-    cores     = 16              # 16コア
-    memory    = 59392           # 58GiB (58 * 1024 = 59392MB)
-    ip        = "192.168.0.151" # 既存のMinecraftServerのIPを引き継ぐ
-    disk_size = "200G"          # 十分なディスクサイズ
+  k3s-worker = {
+    vmid        = 105
+    desc        = "Single K3s Node for all services (Minecraft + Infrastructure)"
+    cores       = 16
+    memory      = 59392
+    ip          = "192.168.0.151"
+    disk_size   = "200G"
+    target_node = "mc-server"
+    template_id = "ubuntu-2404-cloud-init"
+  }
+
+  # 監視専用ノード: s3ホスト上に配置
+  k3s-monitoring = {
+    vmid        = 100
+    desc        = "Dedicated Monitoring Node (Prometheus/Grafana)"
+    cores       = 4
+    memory      = 8192 # 8GiB
+    ip          = "192.168.0.101"
+    disk_size   = "50G"
+    target_node = "s3"
+    template_id = "ubuntu-2404-cloud-init-s3"
   }
 }
-

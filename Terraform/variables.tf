@@ -116,12 +116,14 @@ variable "ssh_public_key" {
 variable "vms" {
   description = "Proxmox VM構成マップ"
   type = map(object({
-    vmid      = number
-    desc      = string
-    cores     = number
-    memory    = number
-    ip        = string
-    disk_size = string
+    vmid        = number
+    desc        = string
+    cores       = number
+    memory      = number
+    ip          = string
+    disk_size   = string
+    target_node = string
+    template_id = string
   }))
   default = {}
 }
