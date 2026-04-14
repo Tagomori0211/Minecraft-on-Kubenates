@@ -38,6 +38,7 @@ spec:
       # proxy-pool（Regular e2-small）に固定
       nodeSelector:
         pool: proxy
+      serviceAccountName: tailscale-sa
       terminationGracePeriodSeconds: 30
 
       # ── Init: Config & forwarding.secret 生成 ─────────────────────────
@@ -90,8 +91,12 @@ spec:
             - name: velocity-data
               mountPath: /server
           resources:
-            requests: { memory: "512Mi", cpu: "200m" }
-            limits: { memory: "768Mi", cpu: "1000m" }
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 400m
+              memory: 512Mi
           startupProbe:
             tcpSocket: { port: 25577 }
             initialDelaySeconds: 10
@@ -106,6 +111,30 @@ spec:
             periodSeconds: 10
             failureThreshold: 3
 
+        # ── Tailscale Sidecar ──────────────────────────────────
+        - name: tailscale
+          image: tailscale/tailscale:latest
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+          env:
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_KUBE_SECRET
+              value: "velocity-tailscale-state"
+            - name: TS_USERSPACE
+              value: "true"
+          resources:
+            requests:
+              cpu: 5m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+
         # ── mc-monitor（Prometheus Exporter）───────────────────
         # Prometheus -->|監視| Velocity (infrastructure.mermaid)
         - name: mc-monitor
@@ -118,8 +147,12 @@ spec:
             - containerPort: 8080
               name: metrics
           resources:
-            requests: { memory: "32Mi", cpu: "10m" }
-            limits: { memory: "64Mi", cpu: "100m" }
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
 
       volumes:
         - name: velocity-config

@@ -60,6 +60,7 @@ spec:
       labels:
         app: nginx-gw
     spec:
+      serviceAccountName: tailscale-sa
       containers:
         - name: bedrock-udp-relay
           image: alpine/socat:latest
@@ -74,7 +75,7 @@ spec:
           resources:
             requests:
               memory: "16Mi"
-              cpu: "10m"
+              cpu: "5m"
             limits:
               memory: "32Mi"
               cpu: "100m"
@@ -89,8 +90,8 @@ spec:
               protocol: UDP
           resources:
             requests:
-              memory: "64Mi"
-              cpu: "10m"
+              memory: "32Mi"
+              cpu: "5m"
             limits:
               memory: "128Mi"
               cpu: "200m"
@@ -98,6 +99,30 @@ spec:
             - name: config
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
+
+        # ── Tailscale Sidecar ──────────────────────────────────
+        - name: tailscale
+          image: tailscale/tailscale:latest
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+          env:
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_KUBE_SECRET
+              value: "nginx-gw-tailscale-state"
+            - name: TS_USERSPACE
+              value: "true"
+          resources:
+            requests:
+              cpu: 5m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
       volumes:
         - name: config
           configMap:
@@ -124,6 +149,24 @@ spec:
       port: 25565
       targetPort: 25565
       protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-gw-bedrock
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: "nginx"
+    app.kubernetes.io/component: "gateway"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Cluster
+  selector:
+    app: nginx-gw
+  ports:
     - name: bedrock
       port: 19132
       targetPort: 19132

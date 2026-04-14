@@ -7,13 +7,13 @@
 #   Lobby はオンプレに移行済み
 #
 # Node Pool 構成:
-#   proxy-pool: e2-small × 1（Regular）
+#   proxy-pool: e2-medium × 1（Regular）
 #     - Velocity, nginx-gw, socat を配置
 #     - Spot 非対応（Velocity 停止 = 全サーバーダウンのため）
 #
 # コストメモ:
 #   コントロールプレーン: Zonal = $74.4 クレジットで実質無料
-#   proxy-pool e2-small:  ~$13/月
+#   proxy-pool e2-medium:  ~$13/月
 #   GCE Tailscale Router: ~$5/月（変更なし）
 #   合計: ~$18/月
 # ============================================================
@@ -217,7 +217,7 @@ resource "google_container_node_pool" "proxy_pool" {
   node_count = 1
 
   node_config {
-    machine_type = "e2-small" # 2vCPU / 2GB — Velocity+nginx+socat で十分
+    machine_type = "e2-medium" # 2vCPU / 2GB — Velocity+nginx+socat で十分
 
     # Spot を使わない（Regular）
     spot = false

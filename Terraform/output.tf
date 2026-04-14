@@ -27,7 +27,7 @@ output "cluster_location" {
 # kubectl接続用コマンド
 output "kubectl_command" {
   description = "Command to configure kubectl"
-  value       = "gcloud container clusters get-credentials ${google_container_cluster.tak_entrance.name} --region ${var.region} --project ${var.project_id}"
+  value       = "gcloud container clusters get-credentials ${google_container_cluster.tak_entrance.name} --zone ${google_container_cluster.tak_entrance.location} --project ${var.project_id}"
 }
 
 # ネットワーク情報
@@ -58,10 +58,10 @@ output "cost_estimation_info" {
   description = "Information for cost estimation"
   value = {
     region         = var.region
-    cluster_type   = "Autopilot"
-    spot_enabled   = var.enable_spot_only
+    cluster_type   = "Standard (Zonal)"
+    proxy_node     = "e2-small (Regular)"
     nat_enabled    = true
     static_ip      = true
-    estimated_note = "Spot Podで最大91%削減。実際のコストはPod使用量に依存。"
+    estimated_note = "Zonalコントロールプレーンは無料、$74.4クレジットで相殺。e2-smallノード費用のみ発生。"
   }
 }
