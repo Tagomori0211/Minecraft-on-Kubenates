@@ -1,6 +1,6 @@
 flowchart LR
 subgraph theme
-    style theme fill:#000,color:#fff,stroke:#000
+    style theme fill:#333,color:#fff,stroke:#000
     subgraph Internet["インターネット"]
         direction TB
         Player_Java["Java版"]
@@ -13,17 +13,17 @@ subgraph theme
         direction TB
         
         subgraph GKE["GKE Autopilot"]
-            subgraph GamePods["ゲームプロキシ層"]
+            subgraph GamePods["外部公開VPC"]
                 GW["Nginx GW<br/>25565/TCP"]
                 Socat["socat<br/>19132/UDP 透過転送"]
-                Velocity["Velocity<br/>ClusterIP"]
-                Lobby["Lobby<br/>Spot Pod"]
+                Velocity["Velocity"]
+                Lobby["Lobby<br/>(Spot Pod)"]
+            end
+            subgraph transform01["TS通過用VPC"]
+                SubnetRouter["Subnet Router<br/>e2-micro / VPC 100.64.0.0/10"]
             end
         end
-        subgraph transform01["a"]
-        direction TB
-            SubnetRouter["Subnet Router<br/>e2-micro / VPC 100.64.0.0/10"]
-        end
+        
     end
 
     subgraph TS["Tailscale VPN (100.x.x.x)"]
@@ -74,7 +74,7 @@ end
     TS_Net <----> TS_K3s
     
     
-    TS_K3s --> Java_Survival
+    TS_K3s ---> Java_Survival
     TS_K3s --> Java_Industry
     TS_K3s --> Bedrock
     
@@ -94,22 +94,31 @@ end
         Prometheus -.->|"Scrape (TS)"| SubnetRouter
 
     %% === スタイル ===
+
+    %% -Names-
     %% Machine1: Ryzen 5700G / 64GB
     %% Machine2: Xeon E5
     %% Worker: k3s-worker VM
     %% MonNode: k3s-monitoring VM
 
+    %% -Colors-
+    style Internet fill:#0091dd,color:#c9d1d9,stroke:#30363d
+    style GCP fill:#4285F4,color:#c9d1d9,stroke:#fff
+    style TS fill:#0d1117,color:#c9d1d9,stroke:#30363d
+    style Onprem fill:#DB4D00,color:#c9d1d9,stroke:#30363d
+    style GKE fill:#34A853,color:#fff,stroke:#000
     style Machine1 fill:#A31919,color:#fff
+    style transform01 fill:#0091FF,color:#fff
     style Machine2 fill:#0091FF,color:#fff
     style Worker fill:#E14141,color:#fff
-    style MonNode fill:#4169E1,color:#fff
     style GW fill:#00C853,color:#fff
     style Socat fill:#00897B,color:#fff
     style Velocity fill:#34a853,color:#fff
-    style Lobby fill:#fbbc04,color:#000
-    style SubnetRouter fill:#8B5CF6,color:#fff
-    style TS_Net fill:#333,color:#fff
-    style TS_K3s fill:#555,color:#fff
+    style Lobby fill:#800080,color:#fff
+    style SubnetRouter fill:#005799,color:#fff
+    style TS fill:#1C192B,color:#fff
+    style TS_Net fill:#2D2251,color:#fff
+    style TS_K3s fill:#9A7DFF,color:#fff
     style Prometheus fill:#e6522c,color:#fff
     style Grafana fill:#f46800,color:#fff
     style Java_Survival fill:#2E7D32,color:#fff
@@ -119,10 +128,8 @@ end
     style Flutter fill:#02569B,color:#fff
     style Envoy fill:#AC6199,color:#fff
     style Kotlin fill:#7F52FF,color:#fff
-    
-    style GamePods fill:#0d1117,color:#c9d1d9,stroke:#30363d
+    style GamePods fill:#0091FF,color:#000,stroke:#000
     style GameServers fill:#0d1117,color:#c9d1d9,stroke:#30363d
-    style MonPods fill:#0d1117,color:#c9d1d9,stroke:#30363d
     style Experimental fill:#1a1a2e,color:#4ade80,stroke:#4ade80
     style Conservative fill:#1a1a2e,color:#f87171,stroke:#f87171
     style SP fill:#0d1117,color:#c9d1d9,stroke:#30363d
