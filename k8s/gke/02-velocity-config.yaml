@@ -41,10 +41,10 @@ data:
     lobby = "lobby:25566"
 
     # オンプレミス Survival（Tailscale IP + NodePort経由）
-    survival = "100.100.135.81:30065"
+    survival = "100.107.122.45:30065"
 
     # オンプレミス Java-Indicatory MOD（NeoForge）
-    mod = "100.100.135.81:30066"
+    mod = "100.107.122.45:30066"
 
     # 接続時の最初のサーバー（フォールバック順）
     try = ["lobby"]

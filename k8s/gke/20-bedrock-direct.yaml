@@ -12,7 +12,7 @@ ports:
     protocol: UDP
 endpoints:
   - addresses:
-      - "100.100.135.81" # ubuntu-151 Tailscale IP
+      - "100.107.122.45" # ubuntu-151 Tailscale IP
     conditions:
       ready: true
 

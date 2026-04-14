@@ -6,7 +6,7 @@ metadata:
   namespace: minecraft
 spec:
   type: ExternalName
-  externalName: 100.100.135.81
+  externalName: 100.107.122.45
 ---
 # On-Premises Survival TCP Service via Direct Routing
 apiVersion: v1

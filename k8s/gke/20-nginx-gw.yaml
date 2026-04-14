@@ -67,7 +67,7 @@ spec:
           command: ["socat"]
           args:
             - "UDP4-LISTEN:19132,fork,reuseaddr"
-            - "UDP4:100.100.135.81:19132"
+            - "UDP4:100.107.122.45:19132"
           ports:
             - containerPort: 19132
               name: bedrock
