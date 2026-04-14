@@ -35,10 +35,9 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
-      tolerations:
-        - key: "node.kubernetes.io/memory-pressure"
-          operator: "Exists"
-          effect: "NoSchedule"
+      # proxy-pool（Regular e2-small）に固定
+      nodeSelector:
+        pool: proxy
       terminationGracePeriodSeconds: 30
 
       # ── Init: Config & forwarding.secret 生成 ─────────────────────────
@@ -73,9 +72,9 @@ spec:
             - { name: VELOCITY_VERSION, value: "3.4.0-SNAPSHOT" }
             - { name: VERSION, value: "1.21.1" }
             - { name: TZ, value: "Asia/Tokyo" }
-            - { name: MEMORY, value: "256M" }
-            - { name: INIT_MEMORY, value: "256M" }
-            - { name: MAX_MEMORY, value: "256M" }
+            - { name: MEMORY, value: "512M" }
+            - { name: INIT_MEMORY, value: "512M" }
+            - { name: MAX_MEMORY, value: "512M" }
             - name: JVM_XX_OPTS
               value: >-
                 -XX:+UseG1GC
@@ -91,7 +90,7 @@ spec:
             - name: velocity-data
               mountPath: /server
           resources:
-            requests: { memory: "256Mi", cpu: "100m" }
+            requests: { memory: "512Mi", cpu: "200m" }
             limits: { memory: "768Mi", cpu: "1000m" }
           startupProbe:
             tcpSocket: { port: 25577 }

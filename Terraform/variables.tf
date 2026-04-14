@@ -5,14 +5,18 @@
 variable "project_id" {
   description = "GCP Project ID"
   type        = string
-  # 実際のプロジェクトIDに置き換える
-  # default = "tak-pipeline-prod"
 }
 
 variable "region" {
   description = "GCP Region for GKE cluster"
   type        = string
   default     = "asia-northeast1" # 東京リージョン
+}
+
+variable "zone" {
+  description = "GCP Zone for GKE cluster（ゾーナル = コントロールプレーン実質無料）"
+  type        = string
+  default     = "asia-northeast1-b"
 }
 
 variable "environment" {
@@ -52,7 +56,7 @@ variable "service_cidr" {
 # GKE Cluster Variables
 # ============================================================
 variable "cluster_name" {
-  description = "GKE Autopilot cluster name"
+  description = "GKE Standard cluster name"
   type        = string
   default     = "tagomori-minecraft"
 }
@@ -82,11 +86,8 @@ variable "onprem_tailscale_subnet" {
 # ============================================================
 # Cost Optimization
 # ============================================================
-variable "enable_spot_only" {
-  description = "Force all workloads to use Spot Pods"
-  type        = bool
-  default     = true
-}
+# NOTE: Spot 制御は Node Pool 単位で行うため、この変数は廃止
+# proxy-pool: Regular（Velocity 終窯 = 全サーバーダウンのため Spot 不可）
 
 # ============================================================
 # Proxmox Variables（オンプレ VM管理）

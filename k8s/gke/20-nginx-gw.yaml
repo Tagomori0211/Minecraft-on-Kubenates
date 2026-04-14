@@ -87,6 +87,13 @@ spec:
             - containerPort: 19132
               name: bedrock
               protocol: UDP
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
           volumeMounts:
             - name: config
               mountPath: /etc/nginx/nginx.conf

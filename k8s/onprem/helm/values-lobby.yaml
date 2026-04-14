@@ -1,0 +1,112 @@
+# ============================================================
+# TAK Pipeline - Lobby Server Values (On-Prem k3s)
+# ============================================================
+# GKE から移行したロビーサーバー
+# Velocity(GKE) → Tailscale → onprem svc-lobby (25566/TCP)
+#
+# デプロイ方法:
+#   helm upgrade --install lobby ./charts/minecraft \
+#     -f values-lobby.yaml \
+#     -n minecraft
+# ============================================================
+
+server:
+  name: "lobby"
+  type: "NEOFORGE"
+  version: "1.21.1"
+  neoforgeVersion: "21.1.222"
+  memory: "8G"
+  memoryRequest: "8Gi"
+  memoryLimit: "8Gi"
+  cpuRequest: "2000m"
+  cpuLimit: "4000m"
+  jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -Daikars.new.flags=true"
+  onlineMode: "FALSE" # Velocity proxy 経由のため
+  difficulty: "peaceful"
+  gamemode: "adventure"
+  spawnProtection: "0"
+  maxPlayers: "100"
+  port: 25566
+  mods:
+    - "neoforged-velocity-support"
+    - "yungs-api"
+    - "terrablender"
+    - "architectury-api"
+    - "geckolib"
+    - "yungs-better-nether-fortresses"
+    - "yungs-better-dungeons"
+    - "yungs-better-jungle-temples"
+    - "yungs-better-ocean-monuments"
+    - "yungs-better-mineshafts"
+    - "yungs-better-end-island"
+    - "yungs-better-strongholds"
+    - "yungs-better-witch-huts"
+    - "yungs-better-desert-temples"
+    - "yungs-extras"
+    - "yungs-better-caves"
+    - "yungs-cave-biomes"
+    - "farmers-delight"
+    - "sophisticated-backpacks"
+    - "sophisticated-core"
+    - "waystones"
+    - "handcrafted"
+    - "resourceful-lib"
+    - "chipped"
+    - "torchmaster"
+    - "aquaculture"
+    - "aquaculture-delight"
+    - "ends-delight"
+    - "expanded-delight"
+    - "my-nethers-delight"
+    - "more-delight"
+    - "brewin-and-chewin"
+    - "crabbers-delight"
+    - "rustic-delight"
+    - "trailtales-delight"
+    - "cultural-delights"
+    - "mekanism"
+    - "mekanism-additions"
+    - "mekanism-generators"
+    - "mekanism-tools"
+    - "trash-cans"
+    - "ae2"
+    - "applied-energistics-2-wireless-terminals"
+    - "applied-mekanistics"
+    - "botany-pots"
+    - "botany-trees"
+    - "mekanismmoremachine"
+    - "mekanism-lasers"
+    - "mekanism_extra"
+    - "evolved-mekanism"
+    - "cosmetic-armor-reworked-forked"
+    - "carry-on"
+    - "gravestone-mod"
+  extraEnv:
+    - name: MODRINTH_ALLOWED_VERSION_TYPE
+      value: "alpha"
+    - name: MODRINTH_DOWNLOAD_DEPENDENCIES
+      value: "REQUIRED"
+    - name: CF_PROJECTS
+      value: "306345,543592"
+    - name: CF_DOWNLOAD_DEPENDENCIES
+      value: "REQUIRED"
+    - name: CF_ALLOWED_VERSION_TYPE
+      value: "alpha"
+    - name: MODS
+      value: "https://www.curseforge.com/api/v1/mods/227639/files/7797302/download"
+
+network:
+  nodePort: 30066
+  serviceType: "NodePort"
+  port: 25566
+
+storage:
+  # ロビーはステートレス設計のため小さめ
+  size: "5Gi"
+
+metrics:
+  enabled: true
+  port: 8080
+
+velocity:
+  enabled: true

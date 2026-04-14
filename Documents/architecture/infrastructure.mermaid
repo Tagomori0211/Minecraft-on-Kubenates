@@ -12,12 +12,11 @@ subgraph theme
     subgraph GCP["GCP (asia-northeast1)"]
         direction TB
         
-        subgraph GKE["GKE Autopilot"]
+        subgraph GKE["GKE Standard (zonal / e2-small × 1)"]
             subgraph GamePods["外部公開VPC"]
                 GW["Nginx GW<br/>25565/TCP"]
                 Socat["socat<br/>19132/UDP 透過転送"]
-                Velocity["Velocity"]
-                Lobby["Lobby<br/>(Spot Pod)"]
+                Velocity["Velocity<br/>(Regular Node固定)"]
             end
             subgraph transform01["TS通過用VPC"]
                 SubnetRouter["Subnet Router<br/>e2-micro / VPC 100.64.0.0/10"]
@@ -38,6 +37,7 @@ subgraph theme
                     subgraph Experimental["実験的 (Java)"]
                         Java_Survival["Survival<br/>16Gi"]
                         Java_Industry["Industry MOD<br/>30Gi"]
+                        Java_Lobby["Lobby<br/>8Gi / (GKEより移行)"]
                     end
                     subgraph Conservative["安定 (Bedrock)"]
                         Bedrock["Bedrock (BDS)<br/>8Gi / 16-Thread<br/>hostPort 19132"]
@@ -66,7 +66,6 @@ end
     Player_Java -->|"25565/TCP"| GW
     Player_Bedrock -->|"19132/UDP"| Socat
     GW --> Velocity
-    Velocity --> Lobby
 
     %% === GKE → Tailscale → オンプレ ===
     Velocity --->|"VPC Route"| SubnetRouter
