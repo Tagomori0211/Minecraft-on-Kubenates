@@ -96,7 +96,7 @@ spec:
               memory: 64Mi
             limits:
               cpu: 400m
-              memory: 512Mi
+              memory: 768Mi
           startupProbe:
             tcpSocket: { port: 25577 }
             initialDelaySeconds: 10
