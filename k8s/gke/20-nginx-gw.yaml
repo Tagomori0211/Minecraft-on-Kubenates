@@ -115,7 +115,7 @@ spec:
             - name: TS_KUBE_SECRET
               value: "nginx-gw-tailscale-state"
             - name: TS_USERSPACE
-              value: "true"
+              value: "false"
           resources:
             requests:
               cpu: 5m

@@ -126,7 +126,7 @@ spec:
             - name: TS_KUBE_SECRET
               value: "velocity-tailscale-state"
             - name: TS_USERSPACE
-              value: "true"
+              value: "false"
           resources:
             requests:
               cpu: 5m
