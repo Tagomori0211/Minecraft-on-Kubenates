@@ -89,3 +89,29 @@ ssh proxmox-mc-server "qm list"
 ---
 
 *Created by: Antigravity (JST: 2026-04-14 22:24)*
+
+---
+
+# 🚀 追記: 第2フェーズ (2026-04-15 〜 2026-04-18) アーキテクチャの完全修復と最適化
+
+> **追記概要**
+> 当初 e2-medium への緊急増強で凌いでいた状態から、抜本的なアーキテクチャの改革を実施。
+> Tailscale の接続基盤を各Podのサイドカーから**GKEノード自体のHostNetwork (DaemonSet)**へと集約することでメモリ問題を解消し、無事に目標であった **e2-small (2GB)** でのフル稼働を達成した。
+
+## 📅 第2フェーズ タイムライン
+
+- `2026-04-16 〜 2026-04-17`:
+  - Tailscaleサイドカーによる OOMKilled 多発に直面し、アーキテクチャの見直しを開始。
+  - Terraform 管理下の GCP VPC Subnet Router (`tailscale-router.tf`) を撤去。クラウド上のルーティングを排除し、完全な K8s ネイティブ通信へ移行。
+- `2026-04-18 09:00`: GKE 側で `tailscale-node` DaemonSet (HostNetwork) を採用。Secret による認証でループ障害が発生したため、ノードの `/var/lib/tailscale` への `hostPath` 永続化に切り替え解決。
+- `2026-04-18 10:00`: オンプレ側 `k3s-monitoring` が Terraform の SCSI コントローラバグによりディスクマウントに失敗していた問題を発見し、コード修正で修復。
+- `2026-04-18 10:45`: GKE Pod からオンプレへの通信が「片道切符」になっていた問題に対し、GKE ノード上に iptables **MASQUERADE (SNAT) サイドカー** を注入することで解決。Velocity -> オンプレミスの透過ルーティングが完成。
+- `2026-04-18 10:52`: K3s 再構築で消失していた Bedrock ワールドデータを `MCBDS_restore.md` ワークフローに沿って復旧。
+- `2026-04-18 11:00`: Bedrock UDP 19132ポートの Firewall 欠落も修正し、全アーキテクチャが e2-small 上で完全に安定稼働 (<-- 現在地)
+
+## 💡 第2フェーズ 学び・改善点
+
+- **ルーティングの実装**: GCP VPCに依存した subnet routing から、GKEノードを直接 Tailscale に参加させる（HostNetwork + SNAT）手法へ進化。これにより Sidecar によるメモリ浪費がなくなり、リソース効率が劇的に向上した。
+- **恒久化設定の重要性**: 一時的な Secret マウントによる Auth Key 管理ではなく、ディスク (`hostPath`) を持たせることで、DaemonSet がクラッシュしても二度と再認証を求められない安定環境を実現した。
+
+*Updated by: Antigravity (JST: 2026-04-18 11:13)*
