@@ -115,3 +115,4 @@ ssh proxmox-mc-server "qm list"
 - **恒久化設定の重要性**: 一時的な Secret マウントによる Auth Key 管理ではなく、ディスク (`hostPath`) を持たせることで、DaemonSet がクラッシュしても二度と再認証を求められない安定環境を実現した。
 
 *Updated by: Antigravity (JST: 2026-04-18 11:13)*
+*承認 Tagomori0211*
