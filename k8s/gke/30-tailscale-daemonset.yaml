@@ -64,7 +64,7 @@ spec:
                   name: tailscale-auth
                   key: TS_AUTHKEY
             - name: TS_EXTRA_ARGS
-              value: "--accept-routes=true --hostname=gke-master-node"
+              value: "--accept-routes=true --hostname=gke-master-node --advertise-routes=10.101.0.0/16"
           securityContext:
             privileged: true
             capabilities:
