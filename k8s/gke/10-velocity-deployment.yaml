@@ -111,30 +111,6 @@ spec:
             periodSeconds: 10
             failureThreshold: 3
 
-        # ── Tailscale Sidecar ──────────────────────────────────
-        - name: tailscale
-          image: tailscale/tailscale:latest
-          securityContext:
-            capabilities:
-              add: ["NET_ADMIN"]
-          env:
-            - name: TS_AUTHKEY
-              valueFrom:
-                secretKeyRef:
-                  name: tailscale-auth
-                  key: TS_AUTHKEY
-            - name: TS_KUBE_SECRET
-              value: "velocity-tailscale-state"
-            - name: TS_USERSPACE
-              value: "false"
-          resources:
-            requests:
-              cpu: 5m
-              memory: 32Mi
-            limits:
-              cpu: 100m
-              memory: 64Mi
-
         # ── mc-monitor（Prometheus Exporter）───────────────────
         # Prometheus -->|監視| Velocity (infrastructure.mermaid)
         - name: mc-monitor

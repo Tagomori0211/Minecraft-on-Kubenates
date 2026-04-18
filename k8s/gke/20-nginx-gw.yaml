@@ -100,29 +100,6 @@ spec:
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
 
-        # ── Tailscale Sidecar ──────────────────────────────────
-        - name: tailscale
-          image: tailscale/tailscale:latest
-          securityContext:
-            capabilities:
-              add: ["NET_ADMIN"]
-          env:
-            - name: TS_AUTHKEY
-              valueFrom:
-                secretKeyRef:
-                  name: tailscale-auth
-                  key: TS_AUTHKEY
-            - name: TS_KUBE_SECRET
-              value: "nginx-gw-tailscale-state"
-            - name: TS_USERSPACE
-              value: "false"
-          resources:
-            requests:
-              cpu: 5m
-              memory: 32Mi
-            limits:
-              cpu: 100m
-              memory: 64Mi
       volumes:
         - name: config
           configMap:

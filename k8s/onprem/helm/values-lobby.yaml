@@ -96,7 +96,7 @@ server:
       value: "https://www.curseforge.com/api/v1/mods/227639/files/7797302/download"
 
 network:
-  nodePort: 30066
+  nodePort: 30067
   serviceType: "NodePort"
   port: 25566
 
