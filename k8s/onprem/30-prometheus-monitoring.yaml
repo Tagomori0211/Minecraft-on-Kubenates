@@ -53,20 +53,22 @@ data:
       scrape_interval: 15s
       evaluation_interval: 15s
 
+    rule_files:
+      - "/etc/prometheus-alerts/alerts.yml"
+
     scrape_configs:
       # ── GKE 内サービス（Tailscale経由でアクセス） ──────────────────
-      # GKE側のサービスを監視するには、GKEのTailscale IPまたは固定ルーティングが必要
       - job_name: 'velocity'
         static_configs:
-          - targets: ['velocity.minecraft.svc.cluster.local:8080'] # TODO: GKE内のTailscale経由IPへ置換
+          - targets: ['100.83.131.107:30080']
             labels: { location: gke, component: velocity }
 
+      # ── オンプレミス MinecraftServer（直接ClusterIP / サービス名）
       - job_name: 'lobby'
         static_configs:
-          - targets: ['lobby.minecraft.svc.cluster.local:8080'] # TODO: GKE内のTailscale経由IPへ置換
-            labels: { location: gke, component: lobby }
+          - targets: ['svc-lobby.minecraft.svc.cluster.local:8080']
+            labels: { location: onprem, component: lobby }
 
-      # ── オンプレミス MinecraftServer（直接ClusterIP / サービス名）
       - job_name: 'survival'
         static_configs:
           - targets: ['svc-survival.minecraft.svc.cluster.local:8080']
@@ -82,17 +84,55 @@ data:
           - targets: ['svc-bedrock.minecraft.svc.cluster.local:8080']
             labels: { location: onprem, component: bedrock }
 
-      # ── オンプレミス AppServer
-      - job_name: 'kotlin-api'
-        static_configs:
-          - targets: ['10.43.1.10:8080']
-            labels: { location: onprem-app, component: kotlin-api }
+      # ── Kubernetes Nodes (Kubelet / cAdvisor) ──────────────────
+      - job_name: 'kubernetes-nodes'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true # Self-signed certs in home lab
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics
 
-      # ── さくらVPS Nginx
-      - job_name: 'nginx-sakura'
+      - job_name: 'kubernetes-cadvisor'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+          - target_label: location
+            replacement: onprem
+
+      # ── GKE (Cloud) Nodes ──────────────────
+      - job_name: 'gke-cadvisor'
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /etc/prometheus-secrets/gke-token
         static_configs:
-          - targets: ['100.64.0.20:9113']
-            labels: { location: sakura-vps, component: nginx-proxy }
+          - targets: ['100.83.131.107:10250'] # GKE Node Tailscale IP
+            labels: { location: gke, component: nodes }
+        metrics_path: /metrics/cadvisor
 
 ---
 # ============================================================
@@ -113,11 +153,14 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: "prometheus"
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
         app.kubernetes.io/name: "prometheus"
     spec:
+      serviceAccountName: prometheus-sa
       nodeSelector:
         node-role.kubernetes.io/monitoring: "true"
       securityContext:
@@ -137,6 +180,11 @@ spec:
               mountPath: /etc/prometheus/
             - name: prometheus-storage
               mountPath: /prometheus/
+            - name: gke-token
+              mountPath: /etc/prometheus-secrets/
+              readOnly: true
+            - name: prometheus-alerts
+              mountPath: /etc/prometheus-alerts/
           resources:
             requests: { memory: "512Mi", cpu: "250m" }
             limits: { memory: "1Gi", cpu: "1000m" }
@@ -147,6 +195,15 @@ spec:
         - name: prometheus-storage
           persistentVolumeClaim:
             claimName: prometheus-storage-pvc
+        - name: gke-token
+          secret:
+            secretName: gke-monitoring-token
+            items:
+              - key: token
+                path: gke-token
+        - name: prometheus-alerts
+          configMap:
+            name: prometheus-alerts-cm
 
 ---
 # ============================================================

@@ -61,8 +61,8 @@
             ]
         },
         {
-            "title": "Cluster overall Memory Usage (GiB)",
-            "type": "timeseries",
+            "title": "Cluster overall Memory Usage (%)",
+            "type": "gauge",
             "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
@@ -75,10 +75,36 @@
             },
             "targets": [
                 {
-                    "expr": "sum(container_memory_usage_bytes{container!=\"\", location=\"onprem\"}) / (1024*1024*1024)",
-                    "legendFormat": "Total Mem (GiB)"
+                    "expr": "sum(container_memory_usage_bytes{container!=\"\", location=\"onprem\"}) / (64*1024*1024*1024)",
+                    "legendFormat": "Total Memory %"
                 }
-            ]
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "mappings": [],
+                    "max": 1,
+                    "min": 0,
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "orange",
+                                "value": 0.8
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.9
+                            }
+                        ]
+                    },
+                    "unit": "percentunit"
+                },
+                "overrides": []
+            }
         },
         {
             "collapsed": false,
@@ -111,10 +137,26 @@
                     "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"^$namespace$\", pod=~\"^$pod$\", container!=\"\", location=\"onprem\"}[5m])) by (pod)",
                     "legendFormat": "{{pod}}"
                 }
+            ],
+            "transformations": [
+                {
+                    "id": "renameByRegex",
+                    "options": {
+                        "regex": "deploy-([a-zA-Z0-9]+)-.*",
+                        "renamePattern": "$1"
+                    }
+                },
+                {
+                    "id": "renameByRegex",
+                    "options": {
+                        "regex": "([a-zA-Z0-9-]+?)-[a-z0-9]{8,10}-[a-z0-9]{5}",
+                        "renamePattern": "$1"
+                    }
+                }
             ]
         },
         {
-            "title": "Pod Memory Usage (GiB)",
+            "title": "Pod Memory Usage (%)",
             "type": "timeseries",
             "datasource": {
                 "type": "prometheus",
@@ -128,8 +170,48 @@
             },
             "targets": [
                 {
-                    "expr": "sum(container_memory_usage_bytes{namespace=~\"^$namespace$\", pod=~\"^$pod$\", container!=\"\", location=\"onprem\"}) by (pod) / (1024*1024*1024)",
+                    "expr": "sum(container_memory_usage_bytes{namespace=~\"^$namespace$\", pod=~\"^$pod$\", container!=\"\", location=\"onprem\"}) by (pod) / (64*1024*1024*1024)",
                     "legendFormat": "{{pod}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "orange",
+                                "value": 0.8
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.9
+                            }
+                        ]
+                    },
+                    "unit": "percentunit"
+                },
+                "overrides": []
+            },
+            "transformations": [
+                {
+                    "id": "renameByRegex",
+                    "options": {
+                        "regex": "deploy-([a-zA-Z0-9]+)-.*",
+                        "renamePattern": "$1"
+                    }
+                },
+                {
+                    "id": "renameByRegex",
+                    "options": {
+                        "regex": "([a-zA-Z0-9-]+?)-[a-z0-9]{8,10}-[a-z0-9]{5}",
+                        "renamePattern": "$1"
+                    }
                 }
             ]
         }
@@ -202,6 +284,6 @@
     "timezone": "browser",
     "title": "On-Premises Resource Map",
     "uid": "onprem-resources",
-    "version": 1,
+    "version": 2,
     "weekStart": ""
 }
