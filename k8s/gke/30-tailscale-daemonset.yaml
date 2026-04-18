@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tailscale-node
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tailscale-node
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tailscale-node
+  namespace: kube-system
+subjects:
+  - kind: ServiceAccount
+    name: tailscale-node
+roleRef:
+  kind: Role
+  name: tailscale-node
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: tailscale-node
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: "tailscale"
+    app.kubernetes.io/component: "vpn"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
+spec:
+  selector:
+    matchLabels:
+      app: tailscale-node
+  template:
+    metadata:
+      labels:
+        app: tailscale-node
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: tailscale-node
+      # GCPのNATが定期的に死ぬ場合があるのでtolerations推奨だがいったん省略
+      containers:
+        - name: tailscale
+          image: tailscale/tailscale:latest
+          env:
+            - name: TS_USERSPACE
+              value: "false"
+            - name: TS_STATE_DIR
+              value: "/var/lib/tailscale"
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_EXTRA_ARGS
+              value: "--accept-routes=true --hostname=gke-master-node"
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
+          volumeMounts:
+            - name: dev-net-tun
+              mountPath: /dev/net/tun
+            - name: ts-state
+              mountPath: /var/lib/tailscale
+        - name: snat-injector
+          image: busybox:1.36
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                if ip link show tailscale0 > /dev/null 2>&1; then
+                  iptables -t nat -C POSTROUTING -o tailscale0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o tailscale0 -j MASQUERADE
+                fi
+                sleep 60
+              done
+      volumes:
+        - name: dev-net-tun
+          hostPath:
+            path: /dev/net/tun
+        - name: ts-state
+          hostPath:
+            path: /var/lib/tailscale
+            type: DirectoryOrCreate

@@ -11,7 +11,6 @@ server:
   jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=32M -XX:G1ReservePercent=20 -XX:+UnlockExperimentalVMOptions -XX:G1MixedGCCountTarget=4 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40"
   onlineMode: "FALSE"
   mods:
-    - "twilight-forest"
     - "yungs-api"
     - "terrablender"
     - "architectury-api"

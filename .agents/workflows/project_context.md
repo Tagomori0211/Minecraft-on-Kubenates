@@ -9,19 +9,20 @@ description: プロジェクト進捗管理
 フロントエンドのトラフィックルーティングや死活監視をGCPで受け持ち、負荷の大きいバックエンドゲームサーバー群を自宅のオンプレミス環境に配置する構成をとっています。
 
 ## アーキテクチャ構成
-### 1. GCP / GKE Autopilot (フロントエンド・プロキシ・監視・ロビー)
+### 1. GCP / GKE Standard (フロントエンド・プロキシ)
+- **ノード仕様:** `e2-small` シングルノード。クラウド側のVPC拡張VMを撤廃し、GKEノード自体にTailscaleをDaemonSet配置する構成。
 - **ゲームプロキシ層:** 
-  - `nginx-gw`: ロードバランサーとして動作。Java版(TCP 25565)を後段のVelocityにプロキシし、Bedrock版(UDP 19132)は`socat`を用いて透過的にオンプレミス側のTailscale IP(`100.100.135.81`)へ転送します。
-  - `Velocity`: Java版サーバー間のプロキシ・ルーティングを担当。
-  - `Lobby`: Spot PodとしてGKE上で軽量に稼働し、ログイン時の待機場所となります。
-- **監視層:** `Prometheus` と `Grafana`。
-- **ネットワーク層:** VPC内に配置された`Subnet Router`が、GKEからTailscale VPN(100.x.x.x)へのトラフィックをルーティングします。
+  - `nginx-gw`: ロードバランサー。Java版(TCP 25565)を後段のVelocityにプロキシし、Bedrock版(UDP 19132)は`socat`でTailscale IP(`100.107.122.45:19132`)へ透過転送します。
+  - `Velocity`: Java版プロキシ。接続したプレイヤーは必ず **「Velocity → Lobby (オンプレ) → Industry 又は Survival」** のフローを経ます。
+- **ネットワーク層:** 
+  - **Tailscale DaemonSet (HostNetwork)**: GKEの `e2-small` ノード自体をTailscaleネットワークに参加させます。SidecarやGCP VPCルーターを用いないため、全PodがネイティブにオンプレミスのK3sネットワークと通信可能です。
 
 ### 2. オンプレミス / k3s (バックエンド・データベース)
-- **スペック:** Ryzen 5700G / 64GBメモリ (k3s-worker VM 58Gi)。Tailscale Clientを実行してGCPとVPN経由で接続されています。
+- **スペック:** Ryzen 5700G / 64GBメモリ (k3s-worker VM 58Gi)。Tailscale Client (`k3s-worker-1`, `100.107.122.45`) が稼働。
 - **ゲームバックエンド:**
-  - `Java_Survival`, `Java_Industry`: Helm等を用いてデプロイされた比較的リソースを消費するメインサーバー群。
-  - `Bedrock (BDS)`: Bedrock版用の専用サーバー(hostPort 19132で稼働)。GKE側のsocatから透過的にトラフィックを受けます。
+  - `Lobby` (8Gi): プレイヤーの初回接続先。Velocityはここを通ります。（GKEからオンプレへ移行済み）
+  - `Java_Survival` (16Gi) / `Java_Industry` (30Gi): メインサーバー群。Lobbyから遷移します。
+  - `Bedrock (BDS)`: Bedrock版用の専用サーバー(hostPort 19132)。GKEのsocatからUDPトラフィックを直接受けます。
 - **Status Platform (状態確認基盤):**
   - Cloudflare Tunnelを経由し、外部にHTTPSでステータスを提供します。
   - `Flutter Web` (フロント), `Envoy`, `Kotlin API (Ktor + gRPC)` の構成です。

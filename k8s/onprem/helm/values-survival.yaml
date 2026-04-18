@@ -4,7 +4,7 @@ server:
   version: "1.21.1"
   neoforgeVersion: "latest"
   memory: "16G"
-  memoryRequest: "16Gi"
+  memoryRequest: "14Gi"
   memoryLimit: "16Gi"
   cpuRequest: "2000m"
   cpuLimit: "2000m"

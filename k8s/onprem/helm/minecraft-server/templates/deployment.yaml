@@ -55,6 +55,7 @@ spec:
 {{- if eq .Values.server.type "NEOFORGE" }}
             - { name: NEOFORGE_VERSION, value: "{{ .Values.server.neoforgeVersion }}" }
 {{- end }}
+            - { name: SERVER_PORT, value: "{{ .Values.network.port }}" }
             - { name: MEMORY, value: "{{ .Values.server.memory }}" }
             - { name: ONLINE_MODE, value: "{{ .Values.server.onlineMode }}" }
             - { name: ENABLE_QUERY, value: "true" }
@@ -83,7 +84,7 @@ spec:
               cpu: "{{ .Values.server.cpuLimit }}"
           startupProbe:
             tcpSocket: { port: {{ .Values.network.port }} }
-            initialDelaySeconds: 120
+            initialDelaySeconds: 30
             periodSeconds: 15
             failureThreshold: 40
           livenessProbe:
@@ -93,7 +94,7 @@ spec:
           readinessProbe:
             exec:
               command: ["mc-health"]
-            initialDelaySeconds: 180
+            initialDelaySeconds: 60
             periodSeconds: 15
 {{- if .Values.metrics.enabled }}
         - name: mc-monitor

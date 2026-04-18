@@ -34,6 +34,7 @@ subgraph theme
             subgraph Worker["k3s-worker VM"]
                 TS_K3s["Tailscale Client"]
                 subgraph GameServers["ゲームサーバー"]
+                    direction TB
                     subgraph Experimental["実験的 (Java)"]
                         Java_Survival["Survival<br/>16Gi"]
                         Java_Industry["Industry MOD<br/>30Gi"]
@@ -72,10 +73,10 @@ end
     Socat ---->|"UDP 透過 (ソースポート維持)"| SubnetRouter
     TS_Net <----> TS_K3s
     
-    
-    TS_K3s ---> Java_Survival
-    TS_K3s --> Java_Industry
-    TS_K3s --> Bedrock
+    TS_K3s --> Java_Lobby
+    Java_Lobby --> Java_Survival
+    Java_Lobby --> Java_Industry
+    TS_K3s ---> Bedrock
     
     SubnetRouter <-->|"Tunnel"| TS_Net
 
@@ -113,22 +114,22 @@ end
     style GW fill:#00C853,color:#fff
     style Socat fill:#00897B,color:#fff
     style Velocity fill:#34a853,color:#fff
-    style Lobby fill:#800080,color:#fff
+    style Java_Lobby fill:#800080,color:#fff
     style SubnetRouter fill:#005799,color:#fff
     style TS fill:#1C192B,color:#fff
     style TS_Net fill:#2D2251,color:#fff
     style TS_K3s fill:#9A7DFF,color:#fff
     style Prometheus fill:#e6522c,color:#fff
     style Grafana fill:#f46800,color:#fff
-    style Java_Survival fill:#2E7D32,color:#fff
-    style Java_Industry fill:#1B5E20,color:#fff
-    style Bedrock fill:#ea4335,color:#fff
+    style Java_Survival fill:#ea4335,color:#fff
+    style Java_Industry fill:#fa4335,color:#fff
+    style Bedrock fill:#1B5E20,color:#fff
     style CF_Tunnel fill:#F6821F,color:#fff
     style Flutter fill:#02569B,color:#fff
     style Envoy fill:#AC6199,color:#fff
     style Kotlin fill:#7F52FF,color:#fff
     style GamePods fill:#0091FF,color:#000,stroke:#000
-    style GameServers fill:#0d1117,color:#c9d1d9,stroke:#30363d
-    style Experimental fill:#1a1a2e,color:#4ade80,stroke:#4ade80
-    style Conservative fill:#1a1a2e,color:#f87171,stroke:#f87171
+    style GameServers fill:#444444,color:#c9d1d9,stroke:#ffffff,stroke-width:3px
+    style Experimental fill:#1a1a2e,color:#ffffff,stroke:#f87171,stroke-width:4px
+    style Conservative fill:#1a1a2e,color:#ffffff,stroke:#4ade80,stroke-width:4px
     style SP fill:#0d1117,color:#c9d1d9,stroke:#30363d
