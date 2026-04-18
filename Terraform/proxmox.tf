@@ -20,13 +20,6 @@ resource "proxmox_vm_qemu" "mc_server_vms" {
   # ★ SCSIコントローラ
   scsihw = "virtio-scsi-pci"
 
-  # ★ ディスク設定
-  disk {
-    slot    = "scsi0"
-    size    = each.value.disk_size
-    storage = "local-lvm"
-    type    = "disk"
-  }
 
   # ★ Cloud-Initドライブ
   disk {
@@ -89,12 +82,6 @@ resource "proxmox_vm_qemu" "s3_vms" {
 
   scsihw = "virtio-scsi-pci"
 
-  disk {
-    slot    = "scsi0"
-    size    = each.value.disk_size
-    storage = "local-lvm"
-    type    = "disk"
-  }
 
   disk {
     slot    = "ide2"
