@@ -248,5 +248,11 @@ scripts/
 # Tasks
 Task_mds/
 
-
+# backups/
 *.mcworld
+
+# addon-raw
+MC_addon-raw/
+*.mcaddon
+*.mcpack
+*.mctemplate

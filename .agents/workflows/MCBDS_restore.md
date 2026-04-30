@@ -41,7 +41,7 @@ kubectl --kubeconfig=k8s/onprem/onprem_kubeconfig.yaml cp sushi.ski-server.mcwor
 5. **ワールドの展開とリストア**
 // turbo
 ```bash
-kubectl --kubeconfig=k8s/onprem/onprem_kubeconfig.yaml exec restore-helper -n minecraft -- sh -c 'mkdir -p "/data/worlds/Bedrock level" && cd "/data/worlds/Bedrock level" && unzip -o /data/sushi.ski-server.mcworld && [ -f "world_behavior_packs.json" ] || echo "[]" > "world_behavior_packs.json" && [ -f "world_resource_packs.json" ] || echo "[]" > "world_resource_packs.json"'
+kubectl --kubeconfig=k8s/onprem/onprem_kubeconfig.yaml exec restore-helper -n minecraft -- sh -c 'mkdir -p "/data/worlds/Bedrock level" && cd "/data/worlds/Bedrock level" && unzip -o /data/sushi.ski-server.mcworld && [ -f "world_behavior_packs.json" ] || echo "[]" > "world_behavior_packs.json" && [ -f "world_resource_packs.json" ] || echo "[]" > "world_resource_packs.json" && chown -R 1000:1000 /data'
 ```
 
 6. **クリーンアップと Pod の削除**
