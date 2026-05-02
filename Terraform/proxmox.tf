@@ -113,6 +113,7 @@ resource "proxmox_vm_qemu" "s3_vms" {
   agent = 1
 
   lifecycle {
-    ignore_changes = [disk]
+    # boot/bootdisk はマイグレーション後のディスク構成と乖離する場合があるため除外
+    ignore_changes = [disk, boot, bootdisk]
   }
 }

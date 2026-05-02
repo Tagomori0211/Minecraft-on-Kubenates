@@ -152,11 +152,11 @@ resource "google_container_cluster" "tak_entrance" {
   }
 
   # プライベートクラスター設定
+  # ADR-001: Cloud NAT 削除に伴い private nodes も無効化（外部IP直付け方式に移行）
+  # master_ipv4_cidr_block は enable_private_nodes=false では不要かつ不変フィールドのため削除
   private_cluster_config {
-    enable_private_nodes    = true
+    enable_private_nodes    = false
     enable_private_endpoint = false # kubectl 接続用に public endpoint を維持
-
-    master_ipv4_cidr_block = "172.16.0.0/28"
   }
 
   # マスター認可ネットワーク
