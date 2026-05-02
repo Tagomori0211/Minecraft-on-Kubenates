@@ -5,46 +5,37 @@ description: プロジェクト進捗管理
 # Minecraft Hybrid Cloud Infrastructure (Minecraft_java_k3s)
 
 ## 概要
-本プロジェクトは、GCP (GKE Autopilot) とオンプレミス (k3s) をTailscale VPNで接続して構築された、Minecraft (Java版 / Bedrock版) のハイブリッドクラウド構成のリポジトリです。
+本プロジェクトは、GCP (GKE Standard) とオンプレミス (k3s) をTailscale VPNで接続して構築された、Minecraft (Java版 / Bedrock版) のハイブリッドクラウド構成のリポジトリです。
 フロントエンドのトラフィックルーティングや死活監視をGCPで受け持ち、負荷の大きいバックエンドゲームサーバー群を自宅のオンプレミス環境に配置する構成をとっています。
 
 ## アーキテクチャ構成
 ### 1. GCP / GKE Standard (フロントエンド・プロキシ)
-- **ノード仕様:** `e2-small` シングルノード。クラウド側のVPC拡張VMを撤廃し、GKEノード自体にTailscaleをDaemonSet配置する構成。
+- **ノード仕様:** `e2-small` (2 vCPU / 2GB RAM) シングルノード。
 - **ゲームプロキシ層:** 
-  - `nginx-gw`: ロードバランサー。Java版(TCP 25565)を後段のVelocityにプロキシし、Bedrock版(UDP 19132)は`socat`でTailscale IP(`100.107.122.45:19132`)へ透過転送します。
-  - `Velocity`: Java版プロキシ。接続したプレイヤーは必ず **「Velocity → Lobby (オンプレ) → Industry 又は Survival」** のフローを経ます。
-- **ネットワーク層:** 
-  - **Tailscale DaemonSet (HostNetwork)**: GKEの `e2-small` ノード自体をTailscaleネットワークに参加させます。SidecarやGCP VPCルーターを用いないため、全PodがネイティブにオンプレミスのK3sネットワークと通信可能です。
+  - `nginx-gw`: ロードバランサー。Java版(TCP 25565)を後段のVelocityにプロキシし、Bedrock版(UDP 19132)は`socat`でTailscale経由でオンプレへ転送。
+  - `Velocity`: Java版プロキシ。
+- **現状の課題:** GKEノード(`e2-small`)のCPUリソースが枯渇しており（予約済み 99%）、`nginx-gw` および `velocity` が **Pending (Insufficient cpu)** 状態になっています。
 
 ### 2. オンプレミス / k3s (バックエンド・データベース)
-- **スペック:** Ryzen 5700G / 64GBメモリ (k3s-worker VM 58Gi)。Tailscale Client (`k3s-worker-1`, `100.107.122.45`) が稼働。
-- **ゲームバックエンド:**
-  - `Lobby` (8Gi): プレイヤーの初回接続先。Velocityはここを通ります。（GKEからオンプレへ移行済み）
-  - `Java_Survival` (16Gi) / `Java_Industry` (30Gi): メインサーバー群。Lobbyから遷移します。
-  - `Bedrock (BDS)`: Bedrock版用の専用サーバー(hostPort 19132)。GKEのsocatからUDPトラフィックを直接受けます。
-- **Status Platform (状態確認基盤):**
-  - Cloudflare Tunnelを経由し、外部にHTTPSでステータスを提供します。
-  - `Flutter Web` (フロント), `Envoy`, `Kotlin API (Ktor + gRPC)` の構成です。
+- **スペック:** Ryzen 5700G / 64GBメモリ。`k3s-worker` (control-plane) と `k3s-monitoring` (monitoring) の2ノード構成。
+- **ゲームバックエンド (正常稼働中):**
+  - `Lobby` (8Gi): プレイヤーの初回接続先。
+  - `Survival` (16Gi) / `Industry` (30Gi): メインサーバー群。
+  - `Bedrock (BDS)` (8Gi): Bedrock版専用サーバー(hostPort 19132)。
+- **Status Platform (未デプロイ):**
+  - `Flutter Web`, `Envoy`, `Kotlin API` の構成ですが、現在k3sクラスタ上に `status` ネームスペースは存在せず、未デプロイ状態です。
 
-## ディレクトリ構成
-- `k8s/gke/`: GKE Autopilot向けのKubernetesマニフェスト群。(Nginx, Velocity, Lobby, 監視系など)
-- `k8s/onprem/`: オンプレミス（k3s）向けのマニフェストとHelmチャート群。(ゲームバックエンド, BDSなど)
-- `Documents/`: `infrastructure.mermaid` などの設計図、および障害対応記録(`OperationPostmortem/`)などのドキュメント類。
-- `Ansible/` / `Terraform/`: インフラストラクチャおよびノード構成のプロビジョニング自動化に関連する設定。
-- `bedrock-relay/`: Bedrock版固有の連携や中継に関連するシステムコンポーネント。
+## ネットワーク・監視
+- **Tailscale:** GKEノードとオンプレノード間を接続。GKE側はDaemonSet/Sidecarで構成、オンプレ側はSubnet Routerが稼働。
+- **監視:** `monitoring-prometheus` ネームスペースにて Grafana / Prometheus が稼働中。
 
-## k8s 開発・運用におけるルール (Naming Convention)
-- **Namespace:** 必ず環境別プレフィックス（`prod-`, `dev-`, `monitoring-`）を付与する。`default`への直デプロイは禁止。
-- **リソース命名規則:** すべてkebab-case。`<service>-<role>` の形式（例: `minecraft-java`, `velocity-proxy`）。
-- **必須Labels:** 全リソースに以下のラベルを付与すること。（Prometheusのサービスディスカバリ等で必須）
-  - `app.kubernetes.io/name`
-  - `app.kubernetes.io/component`
-  - `app.kubernetes.io/managed-by`
-  - `env`
-- **PVC/ConfigMap/Secret:** `<service>-<用途>-pvc` / `<service>-<内容>-cm` / `<service>-<内容>-secret` の形式。
+## 直近のタスク
+1. **GKEのリソース調整:** `e2-small` ノードでのリソース予約競合の解消、またはノードタイプのアップグレード。
+2. **Status Platformのデプロイ:** `k8s/onprem/appserver.yaml` の適用とイメージのビルド。
+3. **Bedrock版アドオンの整理:** `MC_addon-raw` 内の「Health and Damage Indicator」の適用確認。
 
-## 特記事項
-- ルーティングやプロキシ関連の変更を行う際は、Java版/Bedrock版のトラフィック経路の違い(L7 TCPリバースプロキシ vs L4 UDP透過転送)に十分留意してください。
-- 変更を行った後はリモートにすぐに同期するため、こまめにcommit/pushしてください。
-- リモートへ同期したのちproject_context.md自体を改稿して常に最新状況にして。
+## k8s 運用ルール
+- **Namespace:** 環境別プレフィックス（`prod-`, `dev-`, `monitoring-`）を付与。
+- **命名:** kebab-case。`<service>-<role>` 形式。
+- **必須Labels:** `app.kubernetes.io/name`, `component`, `managed-by`, `env`。
+- **PVC/CM/Secret:** `<service>-<用途>-pvc/cm/secret` 形式。
