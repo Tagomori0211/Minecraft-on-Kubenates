@@ -50,15 +50,22 @@ if [ -z "$POD_NAME" ] || [ "$POD_NAME" == "null" ]; then
 fi
 echo "✅ Bedrock Podを特定しました: ${POD_NAME}"
 
-# 2. アナウンス
+# 2. アナウンスと待機シーケンス
+echo "📢 メンテナンス開始のアナウンスを送信..."
+"${DIR}/BDS_say.sh" "日次バックアップ及びメンテナンスを実施します"
+sleep 5
+
 echo "📢 30秒前の再起動アナウンスを送信..."
 "${DIR}/BDS_say.sh" "30秒後にサーバーは再起動します。"
+echo "⏳ 25秒待機中..."
+sleep 25
 
-# 3. 30秒待機
-echo "⏳ 30秒待機中..."
-sleep 30
+echo "📢 5秒前のアナウンスを送信..."
+"${DIR}/BDS_say.sh" "再起動します"
+echo "⏳ 5秒待機中..."
+sleep 5
 
-# 4. サーバーのグレースフルシャットダウン
+# 3. サーバーのグレースフルシャットダウン
 echo "🛑 サーバーをシャットダウンしています..."
 # stopコマンドを送信してグレースフルにデータを保存・終了
 ssh k3s-worker "sudo kubectl exec -n ${NAMESPACE} ${POD_NAME} -c bedrock -- send-command stop" 2>/dev/null
