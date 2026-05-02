@@ -177,6 +177,7 @@ cython_debug/
 
 # Context and Documentation
 sushiski-infra-context.md
+session-context.md
 Documents/architecture/roadmap.mermaid
 
 
