@@ -3,49 +3,51 @@ subgraph theme
     style theme fill:#333,color:#fff,stroke:#000
     subgraph Internet["インターネット"]
         direction TB
-        Player_Java["Java版"]
-        Player_Bedrock["Bedrock版"]
+        Player_Java["Java版プレイヤー"]
+        Player_Bedrock["Bedrock版プレイヤー"]
         Admin["管理者"]
         User["一般ユーザー"]
     end
 
-    subgraph GCP["GCP (asia-northeast1)"]
+    subgraph GCP["GCP (asia-northeast1-b)"]
         direction TB
-        
-        subgraph GKE["GKE Standard (zonal / e2-small × 1)"]
-            subgraph GamePods["外部公開VPC"]
-                GW["Nginx GW<br/>25565/TCP"]
-                Socat["socat<br/>19132/UDP 透過転送"]
-                Velocity["Velocity<br/>(Regular Node固定)"]
+
+        subgraph GCE["GCE VM: mc-proxy-1 (e2-medium)\n静的IP: 35.200.78.252"]
+            direction TB
+
+            subgraph Compose["Docker Compose — host network"]
+                direction TB
+                Nginx["nginx-stream\n25565/TCP → 127.0.0.1:25577"]
+                Velocity["Velocity 3.4\n127.0.0.1:25577"]
+                Socat["socat-bedrock\n19132/UDP fork透過転送"]
+                Nginx --> Velocity
             end
-            subgraph transform01["TS通過用VPC"]
-                SubnetRouter["Subnet Router<br/>e2-micro / VPC 100.64.0.0/10"]
-            end
+
+            Tailscaled["tailscaled (systemd / kernel mode)\ngce-mc-proxy: 100.124.222.31"]
         end
-        
     end
 
     subgraph TS["Tailscale VPN (100.x.x.x)"]
-        TS_Net["Tailscale仮想LAN"]
+        TS_Net["暗号化トンネル\nDirect Path ≈ 20ms"]
     end
 
     subgraph Onprem["オンプレミス環境"]
         subgraph Machine1["Ryzen 5700G / 64GB"]
-            subgraph Worker["k3s-worker VM"]
-                TS_K3s["Tailscale Client"]
-                subgraph GameServers["ゲームサーバー"]
+            subgraph Worker["k3s-worker VM (100.107.122.45)"]
+                TS_K3s["tailscaled"]
+                subgraph GameServers["ゲームサーバー (k3s NodePort)"]
                     direction TB
-                    subgraph Experimental["実験的 (Java)"]
-                        Java_Survival["Survival<br/>16Gi"]
-                        Java_Industry["Industry MOD<br/>30Gi"]
-                        Java_Lobby["Lobby<br/>8Gi / (GKEより移行)"]
+                    subgraph JavaServers["Java Edition"]
+                        Java_Lobby["Lobby\n8Gi / :30067"]
+                        Java_Survival["Survival\n16Gi / :30065"]
+                        Java_Industry["Industry MOD\n30Gi / :30066"]
                     end
-                    subgraph Conservative["安定 (Bedrock)"]
-                        Bedrock["Bedrock (BDS)<br/>8Gi / 16-Thread<br/>hostPort 19132"]
+                    subgraph BedrockServer["Bedrock Edition"]
+                        Bedrock["Bedrock BDS\n8Gi / 16-Thread\nhostPort :19132"]
                     end
                 end
                 subgraph SP["Status Platform"]
-                    direction TB
+                    direction LR
                     CF_Tunnel["CF Tunnel"]
                     Flutter["Flutter Web"]
                     Envoy["Envoy"]
@@ -55,7 +57,6 @@ subgraph theme
         end
 
         subgraph Machine2["Xeon E5"]
-            direction LR
             subgraph MonNode["k3s-monitoring VM"]
                 Prometheus["Prometheus"]
                 Grafana["Grafana"]
@@ -63,73 +64,63 @@ subgraph theme
         end
     end
 end
-    %% === ゲームトラフィック ===
-    Player_Java -->|"25565/TCP"| GW
-    Player_Bedrock -->|"19132/UDP"| Socat
-    GW --> Velocity
 
-    %% === GKE → Tailscale → オンプレ ===
-    Velocity --->|"VPC Route"| SubnetRouter
-    Socat ---->|"UDP 透過 (ソースポート維持)"| SubnetRouter
-    TS_Net <----> TS_K3s
-    
+    %% === ゲームトラフィック ===
+    Player_Java   -->|"25565/TCP"| Nginx
+    Player_Bedrock -->|"19132/UDP"| Socat
+
+    %% === GCE → Tailscale ===
+    Velocity   -->|"30065-30067\nNodePort"| Tailscaled
+    Socat      -->|"UDP fork"| Tailscaled
+    Tailscaled <-->|"Direct"| TS_Net
+
+    %% === Tailscale → オンプレ ===
+    TS_Net <--> TS_K3s
     TS_K3s --> Java_Lobby
     Java_Lobby --> Java_Survival
     Java_Lobby --> Java_Industry
-    TS_K3s ---> Bedrock
-    
-    SubnetRouter <-->|"Tunnel"| TS_Net
+    TS_K3s --> Bedrock
 
     %% === Status Platform ===
-    User ------->|"HTTPS"| CF_Tunnel
+    User -->|"HTTPS"| CF_Tunnel
     CF_Tunnel --> Flutter
     Flutter --> Envoy
     Envoy --> Kotlin
 
-    %% === 管理者・監視 ===
-    direction LR
-        Admin -->|"Tailscale (100.94.84.51:30300)"| Grafana
-        Grafana -.-> Prometheus
-        Prometheus -.->|"Scrape (TS/Local)"| TS_K3s
-        Prometheus -.->|"Scrape (TS)"| SubnetRouter
+    %% === 管理者アクセス ===
+    Admin -->|"IAP SSH"| GCE
+    Admin -->|"Tailscale"| Grafana
+    Grafana -.->|"collect"| Prometheus
+    Prometheus -.->|"scrape"| TS_K3s
 
     %% === スタイル ===
-
-    %% -Names-
-    %% Machine1: Ryzen 5700G / 64GB
-    %% Machine2: Xeon E5
-    %% Worker: k3s-worker VM
-    %% MonNode: k3s-monitoring VM
-
-    %% -Colors-
-    style Internet fill:#0091dd,color:#c9d1d9,stroke:#30363d
-    style GCP fill:#4285F4,color:#c9d1d9,stroke:#fff
-    style TS fill:#0d1117,color:#c9d1d9,stroke:#30363d
-    style Onprem fill:#DB4D00,color:#c9d1d9,stroke:#30363d
-    style GKE fill:#34A853,color:#fff,stroke:#000
-    style Machine1 fill:#A31919,color:#fff
-    style transform01 fill:#0091FF,color:#fff
-    style Machine2 fill:#0091FF,color:#fff
-    style Worker fill:#E14141,color:#fff
-    style GW fill:#00C853,color:#fff
-    style Socat fill:#00897B,color:#fff
-    style Velocity fill:#34a853,color:#fff
-    style Java_Lobby fill:#800080,color:#fff
-    style SubnetRouter fill:#005799,color:#fff
-    style TS fill:#1C192B,color:#fff
-    style TS_Net fill:#2D2251,color:#fff
-    style TS_K3s fill:#9A7DFF,color:#fff
-    style Prometheus fill:#e6522c,color:#fff
-    style Grafana fill:#f46800,color:#fff
-    style Java_Survival fill:#ea4335,color:#fff
-    style Java_Industry fill:#fa4335,color:#fff
-    style Bedrock fill:#1B5E20,color:#fff
-    style CF_Tunnel fill:#F6821F,color:#fff
-    style Flutter fill:#02569B,color:#fff
-    style Envoy fill:#AC6199,color:#fff
-    style Kotlin fill:#7F52FF,color:#fff
-    style GamePods fill:#0091FF,color:#000,stroke:#000
-    style GameServers fill:#444444,color:#c9d1d9,stroke:#ffffff,stroke-width:3px
-    style Experimental fill:#1a1a2e,color:#ffffff,stroke:#f87171,stroke-width:4px
-    style Conservative fill:#1a1a2e,color:#ffffff,stroke:#4ade80,stroke-width:4px
-    style SP fill:#0d1117,color:#c9d1d9,stroke:#30363d
+    style Internet     fill:#0091dd,color:#c9d1d9,stroke:#30363d
+    style GCP          fill:#4285F4,color:#c9d1d9,stroke:#fff
+    style GCE          fill:#34A853,color:#fff,stroke:#fff,stroke-width:2px
+    style Compose      fill:#1565C0,color:#fff,stroke:#90CAF9
+    style TS           fill:#1C192B,color:#fff,stroke:#30363d
+    style TS_Net       fill:#2D2251,color:#fff
+    style Onprem       fill:#DB4D00,color:#c9d1d9,stroke:#30363d
+    style Machine1     fill:#A31919,color:#fff
+    style Machine2     fill:#0D47A1,color:#fff
+    style Worker       fill:#C62828,color:#fff
+    style MonNode      fill:#1565C0,color:#fff
+    style GameServers  fill:#424242,color:#c9d1d9,stroke:#ffffff,stroke-width:2px
+    style JavaServers  fill:#1a1a2e,color:#fff,stroke:#f87171,stroke-width:3px
+    style BedrockServer fill:#1a1a2e,color:#fff,stroke:#4ade80,stroke-width:3px
+    style SP           fill:#0d1117,color:#c9d1d9,stroke:#30363d
+    style Nginx        fill:#00C853,color:#fff
+    style Velocity     fill:#2E7D32,color:#fff
+    style Socat        fill:#00695C,color:#fff
+    style Tailscaled   fill:#005799,color:#fff
+    style TS_K3s       fill:#9A7DFF,color:#fff
+    style Java_Lobby   fill:#6A1B9A,color:#fff
+    style Java_Survival fill:#B71C1C,color:#fff
+    style Java_Industry fill:#E53935,color:#fff
+    style Bedrock      fill:#1B5E20,color:#fff
+    style Prometheus   fill:#e6522c,color:#fff
+    style Grafana      fill:#f46800,color:#fff
+    style CF_Tunnel    fill:#F6821F,color:#fff
+    style Flutter      fill:#02569B,color:#fff
+    style Envoy        fill:#AC6199,color:#fff
+    style Kotlin       fill:#7F52FF,color:#fff
