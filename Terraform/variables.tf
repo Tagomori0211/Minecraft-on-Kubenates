@@ -52,20 +52,6 @@ variable "service_cidr" {
   default     = "10.102.0.0/20" # 4096 Service IPs
 }
 
-# ============================================================
-# GKE Cluster Variables
-# ============================================================
-variable "cluster_name" {
-  description = "GKE Standard cluster name"
-  type        = string
-  default     = "tagomori-minecraft"
-}
-
-variable "release_channel" {
-  description = "GKE release channel (RAPID/REGULAR/STABLE)"
-  type        = string
-  default     = "REGULAR"
-}
 
 # ============================================================
 # Tailscale Variables
