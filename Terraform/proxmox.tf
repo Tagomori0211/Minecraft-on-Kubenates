@@ -13,8 +13,10 @@ resource "proxmox_vm_qemu" "mc_server_vms" {
   full_clone = true
 
   # リソース設定
-  cores   = each.value.cores
-  sockets = 1
+  cpu {
+    cores   = each.value.cores
+    sockets = 1
+  }
   memory  = each.value.memory
 
   # ★ SCSIコントローラ
@@ -56,7 +58,8 @@ resource "proxmox_vm_qemu" "mc_server_vms" {
   agent = 1
 
   lifecycle {
-    ignore_changes = [disk]
+    # tagsはProxmoxプロバイダーがAPI経由で空白を返し続けるため除外
+    ignore_changes = [disk, tags]
   }
 }
 
@@ -76,8 +79,10 @@ resource "proxmox_vm_qemu" "s3_vms" {
   full_clone = true
 
   # リソース設定
-  cores   = each.value.cores
-  sockets = 1
+  cpu {
+    cores   = each.value.cores
+    sockets = 1
+  }
   memory  = each.value.memory
 
   scsihw = "virtio-scsi-pci"
@@ -114,6 +119,7 @@ resource "proxmox_vm_qemu" "s3_vms" {
 
   lifecycle {
     # boot/bootdisk はマイグレーション後のディスク構成と乖離する場合があるため除外
-    ignore_changes = [disk, boot, bootdisk]
+    # tags はProxmoxプロバイダーがAPI経由で空白を返し続けるため除外
+    ignore_changes = [disk, boot, bootdisk, tags]
   }
 }

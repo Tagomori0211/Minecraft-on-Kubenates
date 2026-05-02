@@ -60,7 +60,7 @@ output "cost_estimation_info" {
     region         = var.region
     cluster_type   = "Standard (Zonal)"
     proxy_node     = "e2-small (Regular)"
-    nat_enabled    = true
+    nat_enabled    = false
     static_ip      = true
     estimated_note = "Zonalコントロールプレーンは無料、$74.4クレジットで相殺。e2-smallノード費用のみ発生。"
   }

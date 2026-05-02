@@ -184,7 +184,7 @@ resource "google_container_cluster" "tak_entrance" {
   # ロギング・モニタリング
   # NOTE: managed_prometheus は無効（監視はオンプレ Prometheus に移行済み）
   logging_config {
-    enable_components = ["SYSTEM_COMPONENTS", "WORKLOADS"]
+    enable_components = ["SYSTEM_COMPONENTS"]
   }
 
   monitoring_config {
