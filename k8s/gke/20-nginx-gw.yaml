@@ -67,16 +67,14 @@ spec:
           image: tailscale/tailscale:latest
           env:
             - name: TS_USERSPACE
-              value: "true"
+              value: "false"
             - name: TS_AUTHKEY
               valueFrom:
                 secretKeyRef:
                   name: tailscale-auth
                   key: TS_AUTHKEY
             - name: TS_EXTRA_ARGS
-              value: "--accept-routes"
-            - name: TS_HOSTNAME
-              value: "gke-nginx-gw"
+              value: "--accept-routes --hostname=gke-nginx-gw"
           resources:
             requests:
               memory: "64Mi"
@@ -84,6 +82,14 @@ spec:
             limits:
               memory: "128Mi"
               cpu: "100m"
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+          volumeMounts:
+            - name: dev-net-tun
+              mountPath: /dev/net/tun
         - name: bedrock-udp-relay
           image: alpine/socat:latest
           command: ["socat"]
@@ -107,9 +113,6 @@ spec:
             - containerPort: 25565
               name: minecraft
               protocol: TCP
-            - containerPort: 19132
-              name: bedrock
-              protocol: UDP
           resources:
             requests:
               memory: "32Mi"
@@ -126,6 +129,9 @@ spec:
         - name: config
           configMap:
             name: nginx-gw-config
+        - name: dev-net-tun
+          hostPath:
+            path: /dev/net/tun
 
 ---
 apiVersion: v1
