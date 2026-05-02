@@ -1,0 +1,50 @@
+bind = "127.0.0.1:25577"
+
+motd = "すしすきーマイクラサーバー"
+show-max-players = 100
+
+# Mojang認証（オンラインモード）
+online-mode = true
+
+# Velocity native forwarding（Paper/Lobbyサーバー側でも要設定）
+player-info-forwarding-mode = "modern"
+forwarding-secret-file = "forwarding.secret"
+
+announce-forge = true
+kick-existing-players = false
+ping-passthrough = "DISABLED"
+enable-player-address-logging = true
+
+[servers]
+# オンプレミス Lobby（Tailscale IP + NodePort経由）
+lobby = "100.107.122.45:30067"
+
+# オンプレミス Survival（Tailscale IP + NodePort経由）
+survival = "100.107.122.45:30065"
+
+# オンプレミス Java-Indicatory MOD（NeoForge）
+mod = "100.107.122.45:30066"
+
+# 接続時の最初のサーバー（フォールバック順）
+try = ["lobby"]
+
+[forced-hosts]
+# ドメイン別振り分け（例）
+# "survival.sushiski.example.com" = ["survival"]
+# "mod.sushiski.example.com"      = ["mod"]
+
+[advanced]
+compression-threshold = 256
+compression-level = -1
+connection-timeout = 5000
+read-timeout = 30000
+log-command-executions = false
+log-player-connections = true
+bungee-plugin-message-channel = true
+tcp-fast-open = true
+haproxy-protocol = false
+failover-on-unexpected-server-disconnect = true
+
+[query]
+enabled = false
+port = 25577

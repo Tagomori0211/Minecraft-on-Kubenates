@@ -235,6 +235,9 @@ crash.log
 secret.yaml
 *-secret.yaml
 
+# GCE proxy: 平文 secret は Secret Manager から動的取得するためコミット禁止
+gce/velocity/forwarding.secret
+
 # Temporary k8s/secret files
 k8s/gke/gke_*
 k8s/gke/onprem_kubeconfig.yaml

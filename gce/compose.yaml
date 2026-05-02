@@ -1,0 +1,58 @@
+# ============================================================
+# TAK Pipeline - Minecraft Proxy on GCE (Docker Compose)
+# ============================================================
+# ホストネットワークで velocity と nginx-stream を同居
+# Tailscale はホスト側 systemd で kernel mode 動作
+#
+# 接続フロー:
+#   Java    : 35.200.78.252:25565/TCP -> nginx -> 127.0.0.1:25577 (velocity)
+#                                                     -> 100.107.122.45:30065-30067 (Tailscale)
+#   Bedrock : 35.200.78.252:19132/UDP -> nginx -> 100.107.122.45:19132 (Tailscale)
+# ============================================================
+
+services:
+  velocity:
+    image: itzg/bungeecord:latest
+    container_name: velocity
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TYPE: VELOCITY
+      VELOCITY_VERSION: 3.4.0-SNAPSHOT
+      VERSION: 1.21.1
+      TZ: Asia/Tokyo
+      MEMORY: 512M
+      INIT_MEMORY: 512M
+      MAX_MEMORY: 512M
+      JVM_XX_OPTS: >-
+        -XX:+UseG1GC
+        -XX:G1HeapRegionSize=4M
+        -XX:+UnlockExperimentalVMOptions
+        -XX:+ParallelRefProcEnabled
+        -XX:+AlwaysPreTouch
+    volumes:
+      # 永続化: /server 配下（plugin / log）
+      - velocity-data:/server
+      # 設定ファイルは bind mount（read-only）
+      - ./velocity/velocity.toml:/server/velocity.toml:ro
+      - ./velocity/forwarding.secret:/server/forwarding.secret:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 25577 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  nginx-stream:
+    image: nginx:alpine
+    container_name: nginx-stream
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - velocity
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  velocity-data:
+    name: velocity-data
