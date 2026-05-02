@@ -117,7 +117,12 @@ if [ -s "${TAR_FILE}" ]; then
   [ -x "${DIR}/mc" ] && MC_BIN="${DIR}/mc"
 
   # MinIO エイリアスの設定とアップロード
-  ${MC_BIN} alias set myminio "${MINIO_URL}" "${ACCESSKEY}" "${SECRETKEY}" >/dev/null 2>&1
+  if ! ${MC_BIN} alias set myminio "${MINIO_URL}" "${ACCESSKEY}" "${SECRETKEY}" >/dev/null 2>&1; then
+    echo "❌ エラー: MinIO (${MINIO_URL}) への接続、または認証情報の登録に失敗しました。"
+    echo "💡 ネットワークやポート(9000)、認証情報(.env)を確認してください。"
+    echo "💡 ローカルファイルは保持されます: ${TAR_FILE}"
+    exit 1
+  fi
   
   # ファイル名(yyyy-mm-dd.tar.gz)のみ抽出
   TAR_FILENAME=$(basename "${TAR_FILE}")
