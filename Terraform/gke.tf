@@ -267,29 +267,11 @@ resource "google_container_node_pool" "proxy_pool" {
 }
 
 # ============================================================
-# Cloud NAT (Egress 用)
+# Cloud NAT (廃止済み)
 # ============================================================
-# プライベートノードが外部通信するために必要
-
-resource "google_compute_router" "tak_router" {
-  name    = "${var.vpc_name}-router"
-  region  = var.region
-  network = google_compute_network.tak_vpc.id
-}
-
-resource "google_compute_router_nat" "tak_nat" {
-  name   = "${var.vpc_name}-nat"
-  router = google_compute_router.tak_router.name
-  region = var.region
-
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-
-  log_config {
-    enable = true
-    filter = "ERRORS_ONLY"
-  }
-}
+# ADR-001: enable_private_nodes = false によりノードが外部IPを持つため
+# Cloud NAT は不要になった。tak-vpc-router / tak-vpc-nat は terraform apply で削除される。
+# 削除日: 2026-05-02
 
 # ============================================================
 # Static IP for LoadBalancer
