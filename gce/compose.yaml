@@ -53,6 +53,17 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
 
+  # Bedrock RakNet は nginx UDP proxy では動作しないため socat で透過中継
+  # fork オプションでクライアントごとに独立ソケットを生成し RakNet セッションを正しく維持
+  socat-bedrock:
+    image: alpine/socat:latest
+    container_name: socat-bedrock
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - "UDP4-LISTEN:19132,fork,reuseaddr"
+      - "UDP4:100.107.122.45:19132"
+
 volumes:
   velocity-data:
     name: velocity-data
