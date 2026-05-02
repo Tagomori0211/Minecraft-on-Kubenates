@@ -62,51 +62,6 @@ spec:
     spec:
       serviceAccountName: tailscale-sa
       containers:
-        # --- Tailscale Sidecar ---
-        - name: tailscale
-          image: tailscale/tailscale:latest
-          env:
-            - name: TS_USERSPACE
-              value: "false"
-            - name: TS_AUTHKEY
-              valueFrom:
-                secretKeyRef:
-                  name: tailscale-auth
-                  key: TS_AUTHKEY
-            - name: TS_EXTRA_ARGS
-              value: "--accept-routes --hostname=gke-nginx-gw"
-          resources:
-            requests:
-              memory: "64Mi"
-              cpu: "10m"
-            limits:
-              memory: "128Mi"
-              cpu: "100m"
-          securityContext:
-            capabilities:
-              add:
-                - NET_ADMIN
-                - NET_RAW
-          volumeMounts:
-            - name: dev-net-tun
-              mountPath: /dev/net/tun
-        - name: bedrock-udp-relay
-          image: alpine/socat:latest
-          command: ["socat"]
-          args:
-            - "UDP4-LISTEN:19132,fork,reuseaddr"
-            - "UDP4:100.107.122.45:19132"
-          ports:
-            - containerPort: 19132
-              name: bedrock
-              protocol: UDP
-          resources:
-            requests:
-              memory: "16Mi"
-              cpu: "5m"
-            limits:
-              memory: "32Mi"
-              cpu: "100m"
         - name: nginx
           image: nginx:alpine
           ports:
@@ -129,9 +84,6 @@ spec:
         - name: config
           configMap:
             name: nginx-gw-config
-        - name: dev-net-tun
-          hostPath:
-            path: /dev/net/tun
 
 ---
 apiVersion: v1
@@ -146,6 +98,7 @@ metadata:
     env: "prod"
 spec:
   type: LoadBalancer
+  loadBalancerIP: 35.200.78.252  # tagomori-minecraft-ip（静的IP）
   externalTrafficPolicy: Cluster
   selector:
     app: nginx-gw
@@ -154,25 +107,3 @@ spec:
       port: 25565
       targetPort: 25565
       protocol: TCP
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: nginx-gw-bedrock
-  namespace: minecraft
-  labels:
-    app.kubernetes.io/name: "nginx"
-    app.kubernetes.io/component: "gateway"
-    app.kubernetes.io/managed-by: "kubectl"
-    env: "prod"
-spec:
-  type: LoadBalancer
-  externalTrafficPolicy: Cluster
-  selector:
-    app: nginx-gw
-  ports:
-    - name: bedrock
-      port: 19132
-      targetPort: 19132
-      protocol: UDP

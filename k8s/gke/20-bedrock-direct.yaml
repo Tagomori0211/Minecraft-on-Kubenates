@@ -26,6 +26,7 @@ metadata:
     networking.gke.io/load-balancer-type: "External"
 spec:
   type: LoadBalancer
+  loadBalancerIP: 35.200.109.98  # minecraft-unified-ip（静的IP）
   externalTrafficPolicy: Cluster
   ports:
     - name: bedrock
