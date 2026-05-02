@@ -33,9 +33,9 @@ services:
     volumes:
       # 永続化: /server 配下（plugin / log）
       - velocity-data:/server
-      # 設定ファイルは bind mount（read-only）
-      - ./velocity/velocity.toml:/server/velocity.toml:ro
-      - ./velocity/forwarding.secret:/server/forwarding.secret:ro
+      # itzg/bungeecord の init が chown を実行するため rw が必要
+      - ./velocity/velocity.toml:/server/velocity.toml
+      - ./velocity/forwarding.secret:/server/forwarding.secret
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 25577 || exit 1"]
       interval: 30s

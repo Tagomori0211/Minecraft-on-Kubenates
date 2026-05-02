@@ -20,6 +20,26 @@
 # ============================================================
 
 # ============================================================
+# Firewall: IAP SSH
+# ============================================================
+# GCP IAP (Identity-Aware Proxy) からの SSH を許可
+# IAP のソース IP レンジは 35.235.240.0/20
+resource "google_compute_firewall" "iap_ssh" {
+  name    = "${var.vpc_name}-allow-iap-ssh"
+  network = google_compute_network.tak_vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = ["35.235.240.0/20"]
+  target_tags   = ["minecraft"]
+
+  description = "Allow SSH via IAP for mc-proxy-1 management"
+}
+
+# ============================================================
 # Service Account（最小権限）
 # ============================================================
 resource "google_service_account" "mc_proxy_sa" {
@@ -48,7 +68,7 @@ resource "google_compute_instance" "mc_proxy" {
 
   boot_disk {
     initialize_params {
-      image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts"
+      image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"
       size  = 20
       type  = "pd-balanced"
     }
@@ -57,9 +77,9 @@ resource "google_compute_instance" "mc_proxy" {
   network_interface {
     subnetwork = google_compute_subnetwork.tak_subnet.name
 
-    # Phase 2 ではエフェメラル IP で動作確認
-    # Phase 3 で nat_ip = google_compute_address.minecraft_ip.address に切替
-    access_config {}
+    access_config {
+      nat_ip = google_compute_address.minecraft_ip.address
+    }
   }
 
   service_account {
