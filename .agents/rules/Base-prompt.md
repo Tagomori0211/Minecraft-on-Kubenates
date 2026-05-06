@@ -11,9 +11,12 @@ trigger: always_on
 - トラブルシューティング時は `Documents/OperationPostmortem/` を探索して既知の問題と衝突しないか確認する
 - `git add .` を徹底し、add 漏れがないようにする
 
-### SSH 接続
-SSH 接続時には `~/.ssh/config` を参照し適切な方法で接続すること。
+### SSH / k3s 操作
+k3s クラスターへの操作が必要な場合は `.agents/workflows/k3s-ssh-operations.md` を参照すること。
 
-よく使うホスト:
-- `k3s-worker`: オンプレ k3s バックエンド（kubectl は `sudo kubectl`）
-- `gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap`: GCE VM（IAP 経由）
+**絶対に守ること:**
+- `kubectl` / `helm` / `gcloud` はクライアントマシンから直接実行できない — SSH 経由のみ
+- `gcloud` は k3s-worker にのみインストール済み（k3s-monitoring には未インストール）
+- SSH ホスト名は `~/.ssh/config` で解決済み: `k3s-worker` / `k3s-monitoring`
+- GCE VM へは IAP SSH: `gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap`
+  （ただし gcloud 自体は k3s-worker から実行）
