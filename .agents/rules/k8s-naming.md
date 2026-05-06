@@ -12,33 +12,48 @@ glob: "**/*.yaml,**/*.yml,k8s/**/*,manifests/**/*"
 # k8s Naming Convention — sushiski cluster
 
 ## Namespace
-- 環境別プレフィックスを必ず付ける: `prod-`, `dev-`, `monitoring-`
+
+**理想:** 環境別プレフィックスを付ける: `prod-`, `dev-`, `monitoring-`
 - 例: `prod-minecraft`, `dev-velocity`, `monitoring-prometheus`
 
+**現状の稼働クラスター:**
+- ゲームサーバー: `minecraft` namespace（移行せず運用中）
+- 監視: `monitoring-prometheus` namespace（理想形で運用中）
+
+新規リソースを追加する場合は `minecraft` namespace に揃えること（既存クラスターとの整合性優先）。
+
 ## リソース名
+
 - 全て kebab-case（アンダースコア禁止）
 - `<service>-<role>` の形式を基本とする
-- 例: `minecraft-java`, `velocity-proxy`, `waterdogpe-bedrock`
+- 例: `deploy-bedrock`, `svc-bedrock`, `pvc-bedrock`, `velocity-proxy`
 
 ## Label 必須セット
+
 全リソースに以下を必ず付けること:
+
 ```yaml
 labels:
   app.kubernetes.io/name: "<service-name>"
-  app.kubernetes.io/component: "<role>"   # proxy / backend / monitoring
-  app.kubernetes.io/managed-by: "terraform" # or "helm" / "kubectl"
-  env: "prod"                              # prod / dev / staging
+  app.kubernetes.io/component: "<role>"   # proxy / backend / monitoring / cronjob
+  app.kubernetes.io/managed-by: "kubectl" # or "helm"
+  env: "prod"                             # prod / dev / staging
 ```
 
-## PVC命名
+## PVC 命名
+
 - `<service>-<用途>-pvc` の形式
-- 例: `minecraft-java-data-pvc`, `prometheus-storage-pvc`
+- 例: `pvc-bedrock`, `pvc-tailscale-state`, `prometheus-storage-pvc`
 
 ## ConfigMap / Secret
+
 - `<service>-<内容>-cm` / `<service>-<内容>-secret`
-- 例: `minecraft-java-config-cm`, `velocity-forwarding-secret`
+- 例: `bedrock-backup-script-cm`, `bedrock-backup-secret`, `tailscale-auth`
 
 ## ❌ やってはいけないこと
+
 - `test`, `temp`, `new` などの曖昧な名前
 - Namespace なしのデプロイ（`default` namespace への直デプロイ禁止）
 - label なしリソースの作成（Prometheus のサービスディスカバリが死ぬ）
+- BDS Deployment に対して `kubectl rollout restart` を使用（旧 Pod と新 Pod が並走するリスクあり）
+  → 代わりに `scale --replicas=0` → `scale --replicas=1` を使うこと
