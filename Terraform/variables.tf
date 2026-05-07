@@ -7,6 +7,17 @@ variable "project_id" {
   type        = string
 }
 
+variable "billing_account_id" {
+  description = "GCP 請求先アカウント ID（Budget リソース作成に必要）"
+  type        = string
+}
+
+variable "budget_amount_jpy" {
+  description = "月次予算上限 (JPY)。90% / 100% 超過時に Discord アラート通知。"
+  type        = number
+  default     = 5000
+}
+
 variable "region" {
   description = "GCP Region for GKE cluster"
   type        = string

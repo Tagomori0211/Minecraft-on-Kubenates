@@ -3,8 +3,8 @@
 server:
   name: "survival"
   type: "NEOFORGE"
-  version: "1.21.4"
-  neoforgeVersion: "21.4.15" # Set specific version or "latest"
+  version: "1.21.1"
+  neoforgeVersion: "21.1.228" # Set specific version or "latest"
   memory: "16G"
   memoryRequest: "16Gi"
   memoryLimit: "16Gi"

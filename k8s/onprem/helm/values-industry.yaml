@@ -2,7 +2,7 @@ server:
   name: "mod"
   type: "NEOFORGE"
   version: "1.21.1"
-  neoforgeVersion: "latest"
+  neoforgeVersion: "21.1.228"
   memory: "30G"
   memoryRequest: "30Gi"
   memoryLimit: "30Gi"

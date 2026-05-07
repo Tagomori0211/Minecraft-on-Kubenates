@@ -1,0 +1,12 @@
+[Unit]
+Description=Billing Discord Notifier Timer (5 分間隔)
+Documentation=https://github.com/Tagomori0211/Minecraft_java_k3s
+
+[Timer]
+# 5 分ごとに Pub/Sub をポーリングして課金アラートを Discord に通知
+OnCalendar=*:0/5
+Persistent=true
+Unit=billing-discord-notifier.service
+
+[Install]
+WantedBy=timers.target

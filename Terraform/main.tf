@@ -25,6 +25,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
   }
 
   # State管理（本番運用時はGCSバックエンドを推奨）
@@ -43,8 +47,10 @@ provider "google" {
 }
 
 provider "google-beta" {
-  project = var.project_id
-  region  = var.region
+  project               = var.project_id
+  region                = var.region
+  # billingbudgets.googleapis.com は ADC の quota project 指定が必要
+  user_project_override = true
 }
 
 # ============================================================

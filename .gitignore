@@ -217,8 +217,9 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-#Terraform 
+#Terraform
 Terraform/secret.tfvars
+Terraform/billing_notifier.zip
 # Terraform generated files
 .terraform/
 *.tfplan
@@ -261,3 +262,6 @@ MC_addon-raw/
 *.mcaddon
 *.mcpack
 *.mctemplate
+
+# ModList
+ModList/*

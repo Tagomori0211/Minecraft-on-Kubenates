@@ -69,15 +69,6 @@ data:
     BUCKET="gs://sushiski-mc-backups"
     ALL_DEPLOYS="deploy-survival deploy-lobby deploy-mod deploy-bedrock"
 
-    # エラー時にサーバーを必ず復旧するトラップ
-    ensure_scale_up() {
-      echo "[TRAP] エラー発生: 全サーバーを復旧中..."
-      for D in ${ALL_DEPLOYS}; do
-        kubectl scale deployment "${D}" -n "${NAMESPACE}" --replicas=1 2>/dev/null || true
-      done
-    }
-    trap 'ensure_scale_up' ERR
-
     # kubectl インストール（google/cloud-sdk:slim には含まれないため取得）
     echo "→ kubectl インストール中..."
     K8S_VER=$(curl -sL https://dl.k8s.io/release/stable.txt)
@@ -85,8 +76,90 @@ data:
       "https://dl.k8s.io/release/${K8S_VER}/bin/linux/amd64/kubectl"
     chmod +x /usr/local/bin/kubectl
 
-    # アナウンス送信関数
-    # Bedrock: send-command / Java: rcon-cli（itzg/minecraft-server 組み込み）
+    # gcloud 認証（コンテナ起動時は credential store が空のため明示的にセット）
+    echo "→ gcloud 認証中..."
+    gcloud auth login --cred-file=/secrets/gcs-key.json --quiet 2>/dev/null || true
+    PROJECT_ID=$(gcloud config get project 2>/dev/null)
+    SA_EMAIL="mc-proxy-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+
+    # Discord webhook URL を Secret Manager から取得（失敗時は空文字 = 通知スキップ）
+    DISCORD_WEBHOOK=$(gcloud secrets versions access latest \
+      --secret=mc-discord-webhook-url --project="${PROJECT_ID}" 2>/dev/null || echo "")
+    [ -n "${DISCORD_WEBHOOK}" ] && echo "→ Discord webhook 取得済み" || echo "→ Discord webhook 未設定（通知スキップ）"
+
+    # アップロード済みファイルの signed URL を保持（ファイル名 → URL）
+    declare -A SIGNED_URLS
+
+    # ============================================================
+    # Discord 通知送信関数
+    # ============================================================
+    _send_discord_notification() {
+      local STATUS=$1   # "success" | "failure"
+      [ -z "${DISCORD_WEBHOOK}" ] && return 0
+
+      local COLOR TITLE
+      if [ "${STATUS}" = "success" ]; then
+        COLOR=3066993; TITLE="📦 月次バックアップ ✅ 完了"
+      else
+        COLOR=15158332; TITLE="📦 月次バックアップ ❌ 失敗"
+      fi
+
+      # Python3 で Discord embed JSON を構築
+      python3 - << PYEOF
+import json, urllib.request, sys
+
+webhook_url = "${DISCORD_WEBHOOK}"
+date_str    = "${DATE_STR}"
+status      = "${STATUS}"
+color       = ${COLOR}
+title       = "${TITLE}"
+
+# 署名付き URL フィールドを構築
+signed_urls = {}
+$(for K in "${!SIGNED_URLS[@]}"; do echo "signed_urls['${K}'] = '${SIGNED_URLS[$K]}'"; done)
+
+fields = []
+for fname, url in sorted(signed_urls.items()):
+    val = f"[ダウンロード]({url})" if url else "URL 生成失敗"
+    fields.append({"name": fname, "value": val, "inline": False})
+
+if status == "failure" and not fields:
+    fields.append({"name": "詳細", "value": "スクリプト実行中にエラーが発生しました。", "inline": False})
+
+embed = {
+    "title": title,
+    "description": f"{date_str} のバックアップ処理が完了しました。\n署名付き URL の有効期限: **7日間**",
+    "color": color,
+    "fields": fields,
+}
+
+payload = json.dumps({"embeds": [embed]}).encode()
+req = urllib.request.Request(
+    webhook_url, data=payload, headers={"Content-Type": "application/json"}
+)
+try:
+    urllib.request.urlopen(req, timeout=10)
+    print("Discord 通知送信完了", flush=True)
+except Exception as e:
+    print(f"Discord 通知失敗 (継続): {e}", flush=True)
+PYEOF
+    }
+
+    # ============================================================
+    # エラー時にサーバーを必ず復旧 + Discord 失敗通知
+    # ============================================================
+    ensure_scale_up() {
+      echo "[TRAP] エラー発生: 全サーバーを復旧中..."
+      for D in ${ALL_DEPLOYS}; do
+        kubectl scale deployment "${D}" -n "${NAMESPACE}" --replicas=1 2>/dev/null || true
+      done
+      _send_discord_notification "failure" || true
+    }
+    trap 'ensure_scale_up' ERR
+
+    # ============================================================
+    # アナウンス送信関数（bedrock-restart スキルと同じ間隔）
+    # ============================================================
     announce_server() {
       local SERVER=$1
       local MSG=$2
@@ -105,7 +178,6 @@ data:
       fi
     }
 
-    # --- アナウンスシーケンス（bedrock-restart スキルと同じ間隔）---
     echo "→ メンテナンスアナウンスを送信中..."
     for S in survival lobby mod bedrock; do
       announce_server "${S}" "say [月次バックアップ] 35秒後にサーバーを停止します"
@@ -122,7 +194,7 @@ data:
     done
     sleep 5
 
-    # グレースフルストップ（Java: rcon-cli stop、Bedrock: send-command stop）
+    # グレースフルストップ
     echo "→ グレースフルストップを送信中..."
     for S in survival lobby mod; do
       POD=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/name=${S}" \
@@ -142,11 +214,12 @@ data:
       echo "  ${D}: replicas=0"
     done
 
-    # terminationGracePeriodSeconds: 120 を考慮してポッド終了待機
     echo "→ Pod 終了待機中（60秒）..."
     sleep 60
 
-    # --- Bedrock バックアップ ---
+    # ============================================================
+    # Bedrock バックアップ
+    # ============================================================
     BE_TAR="/tmp/${DATE_STR}_BE.tar.gz"
     echo "→ Bedrock バックアップ作成中: $(basename ${BE_TAR})"
     tar -czf "${BE_TAR}" \
@@ -158,8 +231,9 @@ data:
       2>/dev/null || echo "  警告: Bedrock バックアップ対象ファイルが一部見つかりません"
     echo "  サイズ: $(du -sh ${BE_TAR} | cut -f1)"
 
-    # --- Java バックアップ（サーバーごとに個別アーカイブ）---
-    # 複数ワールド（world, world_nether, world_the_end 等）を含むため個別管理
+    # ============================================================
+    # Java バックアップ（サーバーごとに個別アーカイブ）
+    # ============================================================
     for SERVER in survival lobby mod; do
       TAR_FILE="/tmp/${DATE_STR}_${SERVER}.tar.gz"
       echo "→ Java/${SERVER} バックアップ作成中: $(basename ${TAR_FILE})"
@@ -169,7 +243,6 @@ data:
         f="/data/${SERVER}/${ITEM}"
         [ -f "${f}" ] && ITEMS+=("${f}")
       done
-      # world, world_nether, world_the_end 等を一括取得
       while IFS= read -r -d '' d; do
         ITEMS+=("${d}")
       done < <(find "/data/${SERVER}" -maxdepth 1 -name 'world*' -type d -print0 2>/dev/null)
@@ -190,7 +263,9 @@ data:
     done
     trap - ERR  # 正常スケールアップ後はトラップ解除
 
-    # --- GCS アップロード（4ファイル: BE / survival / lobby / mod）---
+    # ============================================================
+    # GCS アップロード + signed URL 生成（7日有効）
+    # ============================================================
     echo "→ GCS にアップロード中 (${BUCKET})..."
     for TAR_FILE in \
       "/tmp/${DATE_STR}_BE.tar.gz" \
@@ -201,11 +276,26 @@ data:
         FNAME=$(basename "${TAR_FILE}")
         gsutil cp "${TAR_FILE}" "${BUCKET}/${FNAME}"
         echo "  完了: ${FNAME}"
+
+        # mc-proxy-sa を使った V4 署名付き URL（7日有効）を生成
+        SIGNED_URL=$(gcloud storage sign-url \
+          --impersonate-service-account="${SA_EMAIL}" \
+          --duration=7d \
+          "${BUCKET}/${FNAME}" \
+          --format="value(signedUrl)" 2>/dev/null || echo "")
+        SIGNED_URLS["${FNAME}"]="${SIGNED_URL}"
+        [ -n "${SIGNED_URL}" ] && echo "  署名済み URL 生成完了: ${FNAME}" || echo "  警告: URL 生成失敗 ${FNAME}"
+
         rm -f "${TAR_FILE}"
       else
         echo "  スキップ: ${TAR_FILE} が空または存在しません"
       fi
     done
+
+    # ============================================================
+    # Discord 完了通知
+    # ============================================================
+    _send_discord_notification "success"
 
     echo "✓ GCS バックアップ完了: ${DATE_STR}"
 ---

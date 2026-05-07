@@ -2,7 +2,8 @@
 # GCP設定
 # ============================================================
 # GCPプロジェクトID（gcloud projects list で確認）
-project_id = "project-61cf5742-d0ea-45ed-ac0"
+project_id         = "project-61cf5742-d0ea-45ed-ac0"
+billing_account_id = "01D081-BB268A-137D65"
 
 # ============================================================
 # オンプレ設定（Proxmox）
