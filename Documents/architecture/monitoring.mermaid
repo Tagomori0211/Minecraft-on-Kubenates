@@ -1,0 +1,79 @@
+flowchart TD
+
+    subgraph K3s["k3s-worker VM (100.107.122.45)"]
+        direction LR
+        subgraph MC_Pods["Minecraft Pods\n(ClusterIP :8080)"]
+            MC_Metrics["minecraft-exporter\nlobby / survival / mod / bedrock"]
+        end
+        VMAgent["vmagent\n(monitoring-prometheus ns)\nscrape 15s"]
+        MC_Pods -->|"scrape ClusterIP DNS"| VMAgent
+    end
+
+    subgraph TS["Tailscale VPN"]
+        direction LR
+        TS_K3s["k3s-worker\n100.107.122.45"]
+        TS_Mon["mc-monitoring-1\n100.121.113.37"]
+        TS_Proxy["mc-proxy-1\n100.124.222.31"]
+    end
+
+    subgraph GCE_Mon["GCE: mc-monitoring-1 (e2-small)"]
+        direction LR
+        VM["VictoriaMetrics\n:8428 / 保持 90日"]
+        Grafana["Grafana\n:3000 (Tailscale経由のみ)"]
+        VM --> Grafana
+    end
+
+    subgraph GCE_Proxy["GCE: mc-proxy-1 (e2-medium)"]
+        direction TB
+        BQ_Job["bq-metrics.service\n15分間隔 systemd timer"]
+        Alert_Job["billing-discord-notifier\n5分間隔 systemd timer"]
+    end
+
+    subgraph GCP_Svc["GCP マネージドサービス"]
+        direction LR
+        BQ[("BigQuery\nminecraft_monitoring\n.server_metrics")]
+        PubSub["Pub/Sub\nbilling-alerts\n(pull subscription)"]
+        Budget["課金予算\n¥8,000/月\n90% / 100% アラート"]
+    end
+
+    Admin["🔧 管理者"]
+    Discord["💬 Discord"]
+
+    %% メトリクス収集フロー
+    VMAgent      -->|"remote_write\nTailscale → :8428"| TS_K3s
+    TS_K3s       -->|"Tailscale"| TS_Mon
+    TS_Mon       -->|"受信"| VM
+
+    %% BQ 挿入フロー
+    BQ_Job       -->|"query :8428\nTailscale"| TS_Proxy
+    TS_Proxy     -->|"Tailscale"| TS_Mon
+    BQ_Job       -->|"streaming INSERT"| BQ
+
+    %% 課金アラートフロー
+    Budget       -->|"超過通知"| PubSub
+    Alert_Job    -->|"pull"| PubSub
+    Alert_Job    -->|"JPY embed"| Discord
+
+    %% 管理者アクセス
+    Admin        -->|"Tailscale :3000"| Grafana
+
+    style K3s        fill:#C62828,color:#fff
+    style MC_Pods    fill:#424242,color:#fff,stroke:#f87171
+    style MC_Metrics fill:#37474F,color:#fff
+    style VMAgent    fill:#e6522c,color:#fff
+    style TS         fill:#1C192B,color:#fff,stroke:#30363d
+    style TS_K3s     fill:#9A7DFF,color:#fff
+    style TS_Mon     fill:#005799,color:#fff
+    style TS_Proxy   fill:#005799,color:#fff
+    style GCE_Mon    fill:#0F9D58,color:#fff,stroke:#fff,stroke-width:2px
+    style GCE_Proxy  fill:#34A853,color:#fff,stroke:#fff,stroke-width:2px
+    style VM         fill:#e6522c,color:#fff
+    style Grafana    fill:#f46800,color:#fff
+    style BQ_Job     fill:#4285F4,color:#fff
+    style Alert_Job  fill:#7F52FF,color:#fff
+    style GCP_Svc    fill:#2962FF,color:#fff,stroke:#82B1FF
+    style BQ         fill:#4285F4,color:#fff
+    style PubSub     fill:#E65100,color:#fff
+    style Budget     fill:#F57F17,color:#fff
+    style Admin      fill:#37474F,color:#fff
+    style Discord    fill:#5865F2,color:#fff

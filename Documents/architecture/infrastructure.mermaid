@@ -1,165 +1,65 @@
-flowchart LR
-subgraph theme
-    direction LR
-    style theme fill:#1a1a2e,color:#fff,stroke:#000
+flowchart TD
 
-    subgraph Internet["インターネット"]
+    Player_Java["☕ Java版プレイヤー\n25565/TCP"]
+    Player_Bedrock["🪨 Bedrock版プレイヤー\n19132/UDP"]
+
+    subgraph GCE["GCE: mc-proxy-1 (e2-medium)\n静的IP 35.200.78.252"]
         direction TB
-        Player_Java["☕ Java版プレイヤー"]
-        Player_Bedrock["🪨 Bedrock版プレイヤー"]
-        Admin["🔧 管理者"]
-        Discord_Ch["💬 Discord"]
+        subgraph Compose["Docker Compose — host network"]
+            Nginx["nginx-stream\n25565/TCP → 127.0.0.1:25577"]
+            Velocity["Velocity 3.4\n127.0.0.1:25577"]
+            Socat["socat-bedrock\nUDP4-LISTEN:19132,fork\n→ 100.107.122.45:19132"]
+            Nginx --> Velocity
+        end
+        Tailscaled["tailscaled (systemd)\ngce-mc-proxy: 100.124.222.31"]
     end
 
-    subgraph GCP["GCP (asia-northeast1-b)"]
-        direction TB
-
-        subgraph GCE_Proxy["GCE: mc-proxy-1 (e2-medium / 35.200.78.252)"]
-            direction TB
-            subgraph Docker_Proxy["Docker Compose — host network"]
-                Nginx["nginx-stream\n25565/TCP · 19132/UDP"]
-                Velocity["Velocity 3.4\n:25577"]
-                Nginx --> Velocity
-            end
-            Ts_Proxy["tailscaled\ngce-mc-proxy: 100.124.222.31"]
-            BQ_Job["bq-metrics.service\n15分間隔 systemd timer\nVM → BigQuery INSERT"]
-            Alert_Job["billing-discord-notifier\n5分間隔 systemd timer\nPub/Sub pull → Discord"]
-        end
-
-        subgraph GCE_Mon["GCE: mc-monitoring-1 (e2-small)"]
-            direction TB
-            subgraph Docker_Mon["Docker Compose"]
-                VictoriaMetrics["VictoriaMetrics :8428\n保持期間 90日"]
-                Grafana["Grafana :3000\n(Tailscale経由のみ)"]
-                VictoriaMetrics --> Grafana
-            end
-            Ts_Mon["tailscaled\ngce-mc-monitoring: 100.121.113.37"]
-        end
-
-        subgraph GCP_Svc["GCP マネージドサービス"]
-            direction TB
-            BQ[("BigQuery\nminecraft_monitoring\n.server_metrics")]
-            GCS[("Cloud Storage\n月次バックアップ")]
-            PubSub["Pub/Sub\nbilling-alerts\n(pull subscription)"]
-            Budget["課金予算\n¥8,000/月\n90% / 100% アラート"]
-            SM["Secret Manager\ntailscale-auth-key\nmc-discord-webhook-url\nmc-player-hash-salt"]
-        end
+    subgraph TS["Tailscale VPN"]
+        TS_Net["暗号化トンネル Direct ≈ 20ms"]
     end
 
-    subgraph TS["Tailscale VPN (100.x.x.x)"]
-        direction TB
-        TS_A["gce-mc-proxy\n100.124.222.31"]
-        TS_B["gce-mc-monitoring\n100.121.113.37"]
-        TS_C["k3s-worker\n100.107.122.45"]
-    end
-
-    subgraph Onprem["オンプレミス (Ryzen 5700G / 64GB)"]
-        direction TB
-        subgraph K3sWorker["k3s-worker VM (100.107.122.45)"]
+    subgraph Onprem["オンプレミス: Ryzen 5700G / 64GB"]
+        subgraph K3s["k3s-worker VM (100.107.122.45)"]
             direction TB
-            Ts_K3s["tailscaled"]
-            VMAgent["vmagent\nscrape 15s / remote_write → 100.121.113.37:8428"]
-            subgraph JavaServers["Java Edition (k3s NodePort)"]
-                Lobby["Lobby :30067 / 8Gi"]
-                Survival["Survival :30065 / 16Gi"]
-                Mod["Industry MOD :30066 / 30Gi"]
+            subgraph Java["Java Edition — NodePort"]
+                Lobby["Lobby\n:30067 / 8Gi"]
+                Survival["Survival\n:30065 / 16Gi"]
+                Mod["Industry MOD\n:30066 / 30Gi"]
             end
-            subgraph BedrockServer["Bedrock Edition"]
+            subgraph Bedrock["Bedrock Edition"]
                 BDS["Bedrock BDS\nhostPort :19132"]
             end
-            BackupJob["gcs-backup-cronjob\n毎月1日 03:00 JST\n署名付きURL → Discord"]
         end
     end
-end
 
-    %% ゲームトラフィック (Java)
     Player_Java    -->|"25565/TCP"| Nginx
-    Velocity       -->|"NodePort 30065-67"| Ts_Proxy
-    Ts_Proxy       <-->|"Tailscale"| TS_A
-    TS_A           <-->|"Direct ≈ 20ms"| TS_C
-    Ts_K3s         --> Lobby
-    Ts_K3s         --> Survival
-    Ts_K3s         --> Mod
+    Player_Bedrock -->|"19132/UDP"| Socat
 
-    %% ゲームトラフィック (Bedrock)
-    Player_Bedrock -->|"19132/UDP"| Nginx
-    Nginx          -->|"19132/UDP Tailscale"| Ts_Proxy
-    Ts_K3s         --> BDS
+    Velocity       -->|"NodePort 30065-30067\nTailscale"| Tailscaled
+    Socat          -->|"UDP fork\nTailscale"| Tailscaled
+    Tailscaled    <-->|"Direct"| TS_Net
+    TS_Net        <-->|"100.107.122.45"| K3s
 
-    %% モニタリングデータフロー
-    VMAgent -.->|"scrape ClusterIP DNS"| Lobby
-    VMAgent -.->|"scrape"| Survival
-    VMAgent -.->|"scrape"| Mod
-    VMAgent -.->|"scrape"| BDS
-    Ts_K3s  -.->|"remote_write\nTailscale → 100.121.113.37:8428"| TS_B
-    TS_B    -.->|"受信"| VictoriaMetrics
+    K3s --> Lobby
+    K3s --> Survival
+    K3s --> Mod
+    K3s --> BDS
 
-    %% mc-monitoring-1 Tailscale
-    Ts_Mon  <-->|"Tailscale"| TS_B
-
-    %% BQ メトリクス収集
-    BQ_Job  -.->|"query :8428\nTailscale"| TS_B
-    BQ_Job  -.->|"streaming INSERT"| BQ
-
-    %% mc-proxy-1 Tailscale
-    Ts_Proxy <-->|"Tailscale"| TS_A
-
-    %% GCS バックアップ
-    BackupJob -->|"gsutil cp"| GCS
-    BackupJob -->|"signed URL 7日 + embed"| Discord_Ch
-
-    %% 課金アラート → Discord
-    Budget    -->|"90%/100% 超過"| PubSub
-    Alert_Job -->|"pull"| PubSub
-    Alert_Job -->|"JPY embed POST"| Discord_Ch
-
-    %% 管理者アクセス
-    Admin -->|"IAP SSH"| GCE_Proxy
-    Admin -->|"Tailscale :3000"| Grafana
-
-    %% Secret Manager 参照
-    SM -.->|"tailscale-auth-key"| Ts_Proxy
-    SM -.->|"tailscale-auth-key"| Ts_Mon
-    SM -.->|"webhook URL"| Alert_Job
-    SM -.->|"webhook URL / hash-salt"| BackupJob
-
-    %% スタイル定義
-    style Internet      fill:#0091dd,color:#c9d1d9,stroke:#30363d
-    style GCP           fill:#4285F4,color:#c9d1d9,stroke:#fff
-    style GCE_Proxy     fill:#34A853,color:#fff,stroke:#fff,stroke-width:2px
-    style GCE_Mon       fill:#0F9D58,color:#fff,stroke:#fff,stroke-width:2px
-    style Docker_Proxy  fill:#1565C0,color:#fff,stroke:#90CAF9
-    style Docker_Mon    fill:#1565C0,color:#fff,stroke:#90CAF9
-    style GCP_Svc       fill:#2962FF,color:#fff,stroke:#82B1FF
-    style TS            fill:#1C192B,color:#fff,stroke:#30363d
-    style TS_A          fill:#005799,color:#fff
-    style TS_B          fill:#005799,color:#fff
-    style TS_C          fill:#9A7DFF,color:#fff
-    style Onprem        fill:#DB4D00,color:#c9d1d9,stroke:#30363d
-    style K3sWorker     fill:#C62828,color:#fff
-    style JavaServers   fill:#1a1a2e,color:#fff,stroke:#f87171,stroke-width:3px
-    style BedrockServer fill:#1a1a2e,color:#fff,stroke:#4ade80,stroke-width:3px
-    style Nginx         fill:#00C853,color:#fff
-    style Velocity      fill:#2E7D32,color:#fff
-    style Ts_Proxy      fill:#005799,color:#fff
-    style Ts_Mon        fill:#005799,color:#fff
-    style Ts_K3s        fill:#9A7DFF,color:#fff
-    style Lobby         fill:#6A1B9A,color:#fff
-    style Survival      fill:#B71C1C,color:#fff
-    style Mod           fill:#E53935,color:#fff
-    style BDS           fill:#1B5E20,color:#fff
-    style VictoriaMetrics fill:#e6522c,color:#fff
-    style Grafana       fill:#f46800,color:#fff
-    style VMAgent       fill:#e6522c,color:#fff
-    style BQ_Job        fill:#4285F4,color:#fff
-    style Alert_Job     fill:#7F52FF,color:#fff
-    style BackupJob     fill:#00695C,color:#fff
-    style BQ            fill:#4285F4,color:#fff
-    style GCS           fill:#34A853,color:#fff
-    style PubSub        fill:#E65100,color:#fff
-    style Budget        fill:#F57F17,color:#fff
-    style SM            fill:#880E4F,color:#fff
-    style Discord_Ch    fill:#5865F2,color:#fff
-    style Player_Java   fill:#0097A7,color:#fff
-    style Player_Bedrock fill:#558B2F,color:#fff
-    style Admin         fill:#37474F,color:#fff
+    style Player_Java    fill:#0097A7,color:#fff,stroke:#00796B
+    style Player_Bedrock fill:#558B2F,color:#fff,stroke:#33691E
+    style GCE            fill:#34A853,color:#fff,stroke:#fff,stroke-width:2px
+    style Compose        fill:#1565C0,color:#fff,stroke:#90CAF9
+    style Nginx          fill:#00C853,color:#fff
+    style Velocity       fill:#2E7D32,color:#fff
+    style Socat          fill:#00695C,color:#fff
+    style Tailscaled     fill:#005799,color:#fff
+    style TS             fill:#1C192B,color:#fff,stroke:#30363d
+    style TS_Net         fill:#2D2251,color:#fff
+    style Onprem         fill:#DB4D00,color:#c9d1d9,stroke:#30363d
+    style K3s            fill:#C62828,color:#fff
+    style Java           fill:#1a1a2e,color:#fff,stroke:#f87171,stroke-width:3px
+    style Bedrock        fill:#1a1a2e,color:#fff,stroke:#4ade80,stroke-width:3px
+    style Lobby          fill:#6A1B9A,color:#fff
+    style Survival       fill:#B71C1C,color:#fff
+    style Mod            fill:#E53935,color:#fff
+    style BDS            fill:#1B5E20,color:#fff
