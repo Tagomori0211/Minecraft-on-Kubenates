@@ -246,8 +246,9 @@ k8s/onprem/onprem_*
 # Large files
 world.zip
 
-# Scripts
+# Scripts (gce/scripts/ は BQ insert スクリプトを含むため例外)
 scripts/
+!gce/scripts/
 
 # Tasks
 Task_mds/

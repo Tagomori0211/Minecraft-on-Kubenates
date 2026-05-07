@@ -107,8 +107,11 @@ runcmd:
 
   # systemd unit 配置
   - install -m 0644 /opt/mc-proxy/systemd/mc-proxy.service /etc/systemd/system/mc-proxy.service
+  - install -m 0644 /opt/mc-proxy/systemd/bq-metrics.service /etc/systemd/system/bq-metrics.service
+  - install -m 0644 /opt/mc-proxy/systemd/bq-metrics.timer /etc/systemd/system/bq-metrics.timer
   - systemctl daemon-reload
   - systemctl enable --now mc-proxy.service
+  - systemctl enable --now bq-metrics.timer
 
   # 起動確認ログ
   - sleep 30

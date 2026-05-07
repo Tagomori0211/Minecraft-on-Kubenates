@@ -1,0 +1,15 @@
+[Unit]
+Description=BQ Metrics Insert Timer (15 分間隔)
+Documentation=https://github.com/Tagomori0211/Minecraft_java_k3s
+
+[Timer]
+# vmalert の recording rule 評価間隔（15 分）に合わせる
+OnCalendar=*:0/15
+# VM 再起動後に経過した分を遡って実行する
+Persistent=true
+# 前回の bq-metrics.service がまだ動いている場合は次回まで待機
+# (concurrencyPolicy=Forbid 相当)
+Unit=bq-metrics.service
+
+[Install]
+WantedBy=timers.target

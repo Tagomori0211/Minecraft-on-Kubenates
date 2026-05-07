@@ -1,18 +1,15 @@
 # ============================================================
-# Minecraft Monitoring - BigQuery Dataset / Table / SA
+# Minecraft Monitoring - BigQuery Dataset / Table
 # ============================================================
 # フロー:
-#   vmalert (15m recording rules) → k3s CronJob → BQ INSERT
-#   → Looker Studio (task4) で gcp_billing_export と JOIN して
-#     プレイヤー当たりコストを可視化する
+#   vmalert (15m recording rules) → GCE bq-metrics.timer
+#   → bq insert (ADC via GCEインスタンスメタデータ、SA key 不要)
+#   → BigQuery → Looker Studio (task4) で gcp_billing_export と JOIN
 #
-# デプロイ後の手動手順（SA key → k8s Secret 作成）:
-#   terraform output -raw mc_monitoring_writer_key \
-#     | base64 -d > /tmp/mc-monitoring-sa.json
-#   kubectl create secret generic bq-writer-sa-key \
-#     -n monitoring-prometheus \
-#     --from-file=key.json=/tmp/mc-monitoring-sa.json
-#   rm /tmp/mc-monitoring-sa.json
+# 認証方式:
+#   SA key 作成は org policy (constraints/iam.disableServiceAccountKeyCreation)
+#   で禁止されているため、GCE VM の mc-proxy-sa を使用する。
+#   GCE インスタンスメタデータ経由で ADC が自動提供されるため key 不要。
 # ============================================================
 
 # ============================================================
@@ -55,13 +52,13 @@ resource "google_bigquery_table" "server_metrics" {
       description = "集計値" },
   ])
 
-  # 日次パーティション: クエリコスト削減とデータ管理に必須
+  # 日次パーティション: クエリコスト削減
   time_partitioning {
     type  = "DAY"
     field = "timestamp"
   }
 
-  # クラスタリング: server/metric_name でフィルタするクエリを高速化
+  # クラスタリング: server/metric_name フィルタを高速化
   clustering = ["server", "metric_name"]
 
   labels = merge(local.common_labels, {
@@ -70,27 +67,16 @@ resource "google_bigquery_table" "server_metrics" {
 }
 
 # ============================================================
-# Service Account（BQ 書き込み専用）
+# BQ 権限: 既存の mc-proxy-sa に dataEditor を付与
 # ============================================================
+# SA key 不要。GCE VM の cloud-platform スコープで ADC が自動提供される。
+# dataset レベルのみ（project-wide 権限を避ける）。
 
-resource "google_service_account" "mc_monitoring_writer" {
-  project      = var.project_id
-  account_id   = "mc-monitoring-writer"
-  display_name = "Minecraft Monitoring BQ Writer"
-  description  = "k3s CronJob から minecraft_monitoring dataset へのストリーミングINSERT専用。最小権限。"
-}
-
-# dataset レベルで dataEditor 権限のみ付与（project-wide権限を避ける）
-resource "google_bigquery_dataset_iam_member" "mc_monitoring_bq_editor" {
+resource "google_bigquery_dataset_iam_member" "mc_proxy_bq_editor" {
   project    = var.project_id
   dataset_id = google_bigquery_dataset.minecraft_monitoring.dataset_id
   role       = "roles/bigquery.dataEditor"
-  member     = "serviceAccount:${google_service_account.mc_monitoring_writer.email}"
-}
-
-# SA key（k8s Secret に格納するための JSON キー）
-resource "google_service_account_key" "mc_monitoring_writer_key" {
-  service_account_id = google_service_account.mc_monitoring_writer.name
+  member     = "serviceAccount:${google_service_account.mc_proxy_sa.email}"
 }
 
 # ============================================================
@@ -107,16 +93,17 @@ output "mc_monitoring_table_id" {
   value       = google_bigquery_table.server_metrics.table_id
 }
 
-output "mc_monitoring_writer_key" {
-  description = <<-EOT
-    k8s Secret 作成コマンド（SA key JSON）:
-      terraform output -raw mc_monitoring_writer_key \
-        | base64 -d > /tmp/mc-monitoring-sa.json
-      kubectl create secret generic bq-writer-sa-key \
-        -n monitoring-prometheus \
-        --from-file=key.json=/tmp/mc-monitoring-sa.json
-      rm /tmp/mc-monitoring-sa.json
+output "mc_monitoring_setup_note" {
+  description = "GCE VM への bq-metrics timer デプロイ手順"
+  value       = <<-EOT
+    GCE VM に bq-metrics timer をデプロイ（既存 VM への手動適用）:
+      gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap -- '
+        sudo git -C /opt/mc-proxy pull
+        sudo install -m 0644 /opt/mc-proxy/systemd/bq-metrics.service /etc/systemd/system/
+        sudo install -m 0644 /opt/mc-proxy/systemd/bq-metrics.timer /etc/systemd/system/
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now bq-metrics.timer
+        sudo systemctl list-timers bq-metrics.timer
+      '
   EOT
-  value     = google_service_account_key.mc_monitoring_writer_key.private_key
-  sensitive = true
 }
