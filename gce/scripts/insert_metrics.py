@@ -32,18 +32,26 @@ def _load_project_id() -> str:
         raise RuntimeError(f"GCE メタデータからプロジェクト ID を取得できませんでした: {e}") from e
 
 
-# k3s VictoriaMetrics NodePort (Tailscale 経由)
-VM_URL = os.environ.get("VM_URL", "http://100.107.122.45:30428")
+# GCE mc-monitoring-1 VictoriaMetrics (Tailscale 経由)
+VM_URL = os.environ.get("VM_URL", "http://100.121.113.37:8428")
 BQ_PROJECT = _load_project_id()
 BQ_TABLE = "minecraft_monitoring.server_metrics"
 
-# vmalert が生成する 15 分集計 recording rules
+# minecraft_status_* から 15 分平均/最大/最小を PromQL で集計する
+# (vmalert recording rules は未使用のため直接クエリ)
 METRICS = [
+    "avg_over_time(minecraft_status_players_online_count{server_edition='java'}[15m])",
+    "max_over_time(minecraft_status_players_online_count{server_edition='java'}[15m])",
+    "avg_over_time(minecraft_status_response_time_seconds{server_edition='java'}[15m])",
+    "min_over_time(minecraft_status_healthy{server_edition='java'}[15m])",
+]
+
+# BQ に保存する metric_name（METRICS リストと 1:1 対応）
+METRIC_NAMES = [
     "mc:players_online:avg15m",
     "mc:players_online:max15m",
-    "mc:tps:avg15m",
-    "mc:tps:min15m",
-    "mc:jvm_memory_used_bytes:avg15m",
+    "mc:response_time_seconds:avg15m",
+    "mc:healthy:min15m",
 ]
 
 
@@ -91,18 +99,18 @@ def main() -> None:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     rows = []
 
-    for metric in METRICS:
-        for r in query_vm(metric):
+    for expr, metric_name in zip(METRICS, METRIC_NAMES):
+        for r in query_vm(expr):
             server = r["metric"].get("component", "unknown")
             raw = r.get("value", [None, None])[1]
-            # NoData（サーバー停止中・Bedrock の mc_tps 未対応等）はスキップ
+            # NoData（サーバー停止中等）はスキップ
             if raw is None or raw == "NaN":
                 continue
             rows.append({
                 "timestamp": ts,
                 "player_hash": None,    # 将来のプレイヤー粒度メトリクス用（現在 NULL）
                 "server": server,
-                "metric_name": metric,
+                "metric_name": metric_name,
                 "value": float(raw),
             })
 
