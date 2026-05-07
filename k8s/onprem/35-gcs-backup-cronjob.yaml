@@ -23,6 +23,9 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get", "create"]
   - apiGroups: ["apps"]
     resources: ["deployments", "deployments/scale"]
     verbs: ["get", "patch", "update"]
@@ -81,6 +84,56 @@ data:
     curl -sLo /usr/local/bin/kubectl \
       "https://dl.k8s.io/release/${K8S_VER}/bin/linux/amd64/kubectl"
     chmod +x /usr/local/bin/kubectl
+
+    # アナウンス送信関数
+    # Bedrock: send-command / Java: rcon-cli（itzg/minecraft-server 組み込み）
+    announce_server() {
+      local SERVER=$1
+      local MSG=$2
+      local POD
+
+      if [ "${SERVER}" = "bedrock" ]; then
+        POD=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/component=bedrock \
+          --no-headers -o custom-columns=':metadata.name' 2>/dev/null | head -1)
+        [ -z "${POD}" ] && return 0
+        kubectl exec -n "${NAMESPACE}" "${POD}" -c bedrock -- send-command "${MSG}" 2>/dev/null || true
+      else
+        POD=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/name=${SERVER}" \
+          --no-headers -o custom-columns=':metadata.name' 2>/dev/null | head -1)
+        [ -z "${POD}" ] && return 0
+        kubectl exec -n "${NAMESPACE}" "${POD}" -- rcon-cli "${MSG}" 2>/dev/null || true
+      fi
+    }
+
+    # --- アナウンスシーケンス（bedrock-restart スキルと同じ間隔）---
+    echo "→ メンテナンスアナウンスを送信中..."
+    for S in survival lobby mod bedrock; do
+      announce_server "${S}" "say [月次バックアップ] 35秒後にサーバーを停止します"
+    done
+    sleep 5
+
+    for S in survival lobby mod bedrock; do
+      announce_server "${S}" "say 30秒後にサーバーは再起動します"
+    done
+    sleep 25
+
+    for S in survival lobby mod bedrock; do
+      announce_server "${S}" "say 再起動します"
+    done
+    sleep 5
+
+    # グレースフルストップ（Java: rcon-cli stop、Bedrock: send-command stop）
+    echo "→ グレースフルストップを送信中..."
+    for S in survival lobby mod; do
+      POD=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/name=${S}" \
+        --no-headers -o custom-columns=':metadata.name' 2>/dev/null | head -1)
+      [ -n "${POD}" ] && kubectl exec -n "${NAMESPACE}" "${POD}" -- rcon-cli "stop" 2>/dev/null || true
+    done
+    BEDROCK_POD=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/component=bedrock \
+      --no-headers -o custom-columns=':metadata.name' 2>/dev/null | head -1)
+    [ -n "${BEDROCK_POD}" ] && \
+      kubectl exec -n "${NAMESPACE}" "${BEDROCK_POD}" -c bedrock -- send-command stop 2>/dev/null || true
+    sleep 10
 
     # 全サーバーをスケールダウン
     echo "→ 全サーバーをスケールダウン中..."
