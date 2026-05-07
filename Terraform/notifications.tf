@@ -97,7 +97,7 @@ resource "google_pubsub_subscription_iam_member" "mc_proxy_billing_subscriber" {
 # ============================================================
 
 resource "google_billing_budget" "mc_budget" {
-  provider        = google-beta
+  provider        = google-beta.billing
   billing_account = var.billing_account_id
   display_name    = "Minecraft Infrastructure Budget"
 
@@ -136,12 +136,10 @@ resource "google_billing_budget" "mc_budget" {
 #   gcloud storage sign-url --impersonate-service-account mc-proxy-sa
 # を実行できるよう、Terraform 実行ユーザーに serviceAccountTokenCreator を付与する。
 
-data "google_client_openid_userinfo" "me" {}
-
 resource "google_service_account_iam_member" "user_impersonate_mc_proxy_sa" {
   service_account_id = google_service_account.mc_proxy_sa.name
   role               = "roles/iam.serviceAccountTokenCreator"
-  member             = "user:${data.google_client_openid_userinfo.me.email}"
+  member             = "user:${var.terraform_executor_email}"
 }
 
 # ============================================================

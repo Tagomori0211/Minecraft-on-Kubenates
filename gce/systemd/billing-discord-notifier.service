@@ -9,7 +9,7 @@ Type=oneshot
 # --network=host: GCE インスタンスメタデータ (169.254.169.254) に到達するために必要
 ExecStart=/usr/bin/docker run --rm \
   --network=host \
-  -v /opt/mc-proxy/gce/scripts:/scripts:ro \
+  -v /opt/mc-proxy/scripts:/scripts:ro \
   google/cloud-sdk:slim \
   python3 /scripts/billing-discord-notifier.py
 TimeoutStartSec=60

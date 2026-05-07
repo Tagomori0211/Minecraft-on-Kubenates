@@ -110,7 +110,11 @@ def _send_discord(webhook_url: str, data: dict) -> None:
     req = urllib.request.Request(
         webhook_url,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            # Cloudflare は Python-urllib を ASN レベルでブロックするため偽装が必要
+            "User-Agent": "DiscordBot (https://github.com, 1.0)",
+        },
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
         resp.read()

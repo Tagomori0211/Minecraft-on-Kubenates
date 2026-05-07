@@ -47,9 +47,15 @@ provider "google" {
 }
 
 provider "google-beta" {
+  project = var.project_id
+  region  = var.region
+}
+
+# billingbudgets.googleapis.com は ADC の quota project 明示が必要なため専用エイリアスを使用
+provider "google-beta" {
+  alias                 = "billing"
   project               = var.project_id
   region                = var.region
-  # billingbudgets.googleapis.com は ADC の quota project 指定が必要
   user_project_override = true
 }
 

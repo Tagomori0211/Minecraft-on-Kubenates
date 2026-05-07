@@ -18,6 +18,12 @@ variable "budget_amount_jpy" {
   default     = 5000
 }
 
+variable "terraform_executor_email" {
+  description = "Terraform 実行ユーザーの Google アカウントメール（mc-proxy-sa impersonation に必要）"
+  type        = string
+  default     = "tagomoriyuukichi@gmail.com"
+}
+
 variable "region" {
   description = "GCP Region for GKE cluster"
   type        = string
