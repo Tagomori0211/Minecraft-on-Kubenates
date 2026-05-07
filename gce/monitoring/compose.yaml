@@ -1,0 +1,47 @@
+services:
+
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.115.0
+    container_name: victoria-metrics
+    restart: unless-stopped
+    ports:
+      # Tailscale 経由での vmagent remote_write 受信。外部には非公開。
+      - "8428:8428"
+    volumes:
+      - victoria-metrics-data:/victoria-metrics
+    command:
+      - "-storageDataPath=/victoria-metrics"
+      - "-retentionPeriod=90d"
+      - "-httpListenAddr=:8428"
+      # メモリ上限: e2-small (2GB) に合わせて控えめに設定
+      - "-memory.allowedPercent=40"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8428/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:11.6.1
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      # IAP SSH トンネル経由のみ（外部非公開）
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      # 初回ログイン後に必ず変更すること
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+    depends_on:
+      victoria-metrics:
+        condition: service_healthy
+
+volumes:
+  victoria-metrics-data:
+  grafana-data:

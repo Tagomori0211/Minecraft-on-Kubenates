@@ -1,0 +1,11 @@
+apiVersion: 1
+
+datasources:
+  - name: VictoriaMetrics
+    type: prometheus
+    url: http://victoria-metrics:8428
+    isDefault: true
+    access: proxy
+    editable: false
+    jsonData:
+      timeInterval: "15s"
