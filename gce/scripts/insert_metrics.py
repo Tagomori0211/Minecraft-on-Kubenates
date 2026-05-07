@@ -5,6 +5,8 @@ VictoriaMetrics の recording rule 結果を BigQuery にストリーミング I
 実行環境: GCE VM 上の Docker コンテナ (google/cloud-sdk:slim)
 認証: GCE インスタンスメタデータ経由の ADC (SA key 不要)
 """
+import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -43,6 +45,35 @@ METRICS = [
     "mc:tps:min15m",
     "mc:jvm_memory_used_bytes:avg15m",
 ]
+
+
+def _get_gce_access_token() -> str:
+    """GCE インスタンスメタデータからアクセストークンを取得する。"""
+    req = urllib.request.Request(
+        "http://metadata.google.internal/computeMetadata/v1/"
+        "instance/service-accounts/default/token",
+        headers={"Metadata-Flavor": "Google"},
+    )
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        return json.loads(resp.read())["access_token"]
+
+
+def get_player_hash_salt() -> str:
+    """Secret Manager から XUID ハッシュ化用 salt を取得する。"""
+    token = _get_gce_access_token()
+    url = (
+        f"https://secretmanager.googleapis.com/v1/projects/{BQ_PROJECT}"
+        "/secrets/mc-player-hash-salt/versions/latest:access"
+    )
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        payload_b64 = json.loads(resp.read())["payload"]["data"]
+    return base64.b64decode(payload_b64).decode()
+
+
+def hash_xuid(xuid: str, salt: str) -> str:
+    """SHA256(XUID + salt) を返す。Looker Studio 公開時に生 XUID を隠蔽する。"""
+    return hashlib.sha256((xuid + salt).encode()).hexdigest()
 
 
 def query_vm(metric: str) -> list:

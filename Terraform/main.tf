@@ -21,6 +21,10 @@ terraform {
       source  = "telmate/proxmox"
       version = "3.0.2-rc04"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 
   # State管理（本番運用時はGCSバックエンドを推奨）
