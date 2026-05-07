@@ -14,7 +14,7 @@ server:
   name: "lobby"
   type: "NEOFORGE"
   version: "1.21.1"
-  neoforgeVersion: "21.1.222"
+  neoforgeVersion: "21.1.228"
   memory: "8G"
   memoryRequest: "8Gi"
   memoryLimit: "8Gi"
