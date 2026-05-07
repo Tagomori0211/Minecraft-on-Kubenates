@@ -1,17 +1,17 @@
 flowchart TD
 
-    Player_Java["☕ Java版プレイヤー\n25565/TCP"]
-    Player_Bedrock["🪨 Bedrock版プレイヤー\n19132/UDP"]
+    Player_Java["☕ Java版プレイヤー<br>25565/TCP"]
+    Player_Bedrock["🪨 Bedrock版プレイヤー<br>19132/UDP"]
 
-    subgraph GCE["GCE: mc-proxy-1 (e2-medium)\n静的IP 35.200.78.252"]
+    subgraph GCE["GCE: mc-proxy-1 (e2-medium)<br>静的IP 35.200.78.252"]
         direction TB
         subgraph Compose["Docker Compose — host network"]
-            Nginx["nginx-stream\n25565/TCP → 127.0.0.1:25577"]
-            Velocity["Velocity 3.4\n127.0.0.1:25577"]
-            Socat["socat-bedrock\nUDP4-LISTEN:19132,fork\n→ 100.107.122.45:19132"]
+            Nginx["nginx-stream<br>25565/TCP → 127.0.0.1:25577"]
+            Velocity["Velocity 3.4<br>127.0.0.1:25577"]
+            Socat["socat-bedrock<br>UDP4-LISTEN:19132,fork<br>→ 100.107.122.45:19132"]
             Nginx --> Velocity
         end
-        Tailscaled["tailscaled (systemd)\ngce-mc-proxy: 100.124.222.31"]
+        Tailscaled["tailscaled (systemd)<br>gce-mc-proxy: 100.124.222.31"]
     end
 
     subgraph TS["Tailscale VPN"]
@@ -22,21 +22,21 @@ flowchart TD
         subgraph K3s["k3s-worker VM (100.107.122.45)"]
             direction TB
             subgraph Java["Java Edition — NodePort"]
-                Lobby["Lobby\n:30067 / 8Gi"]
-                Survival["Survival\n:30065 / 16Gi"]
-                Mod["Industry MOD\n:30066 / 30Gi"]
+                Survival["Survival<br>30065 / 16Gi"]
+                Mod["Industry MOD<br>30066 / 30Gi"]
+                Lobby["Lobby<br>30067 / 8Gi"]
             end
             subgraph Bedrock["Bedrock Edition"]
-                BDS["Bedrock BDS\nhostPort :19132"]
+                BDS["Bedrock BDS<br>hostPort :19132"]
             end
         end
     end
 
     Player_Java    -->|"25565/TCP"| Nginx
-    Player_Bedrock -->|"19132/UDP"| Socat
+    Player_Bedrock --->|"19132/UDP"| Socat
 
-    Velocity       -->|"NodePort 30065-30067\nTailscale"| Tailscaled
-    Socat          -->|"UDP fork\nTailscale"| Tailscaled
+    Velocity       -->|"NodePort 30065-30067<br>Tailscale"| Tailscaled
+    Socat          -->|"UDP fork<br>Tailscale"| Tailscaled
     Tailscaled    <-->|"Direct"| TS_Net
     TS_Net        <-->|"100.107.122.45"| K3s
 
@@ -49,7 +49,7 @@ flowchart TD
     style Player_Bedrock fill:#558B2F,color:#fff,stroke:#33691E
     style GCE            fill:#34A853,color:#fff,stroke:#fff,stroke-width:2px
     style Compose        fill:#1565C0,color:#fff,stroke:#90CAF9
-    style Nginx          fill:#00C853,color:#fff
+    style Nginx          fill:#006853,color:#fff
     style Velocity       fill:#2E7D32,color:#fff
     style Socat          fill:#00695C,color:#fff
     style Tailscaled     fill:#005799,color:#fff
