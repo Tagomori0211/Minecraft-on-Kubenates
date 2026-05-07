@@ -1,0 +1,241 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gcs-backup-sa
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: gcs-backup
+    app.kubernetes.io/component: cronjob
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gcs-backup-role
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: gcs-backup
+    app.kubernetes.io/component: cronjob
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gcs-backup-rolebinding
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: gcs-backup
+    app.kubernetes.io/component: cronjob
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gcs-backup-role
+subjects:
+  - kind: ServiceAccount
+    name: gcs-backup-sa
+    namespace: minecraft
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gcs-backup-script-cm
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: gcs-backup
+    app.kubernetes.io/component: cronjob
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+data:
+  backup.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    NAMESPACE="minecraft"
+    DATE_STR=$(date +%Y-%m-%d)
+    BUCKET="gs://sushiski-mc-backups"
+    ALL_DEPLOYS="deploy-survival deploy-lobby deploy-mod deploy-bedrock"
+
+    # エラー時にサーバーを必ず復旧するトラップ
+    ensure_scale_up() {
+      echo "[TRAP] エラー発生: 全サーバーを復旧中..."
+      for D in ${ALL_DEPLOYS}; do
+        kubectl scale deployment "${D}" -n "${NAMESPACE}" --replicas=1 2>/dev/null || true
+      done
+    }
+    trap 'ensure_scale_up' ERR
+
+    # kubectl インストール（google/cloud-sdk:slim には含まれないため取得）
+    echo "→ kubectl インストール中..."
+    K8S_VER=$(curl -sL https://dl.k8s.io/release/stable.txt)
+    curl -sLo /usr/local/bin/kubectl \
+      "https://dl.k8s.io/release/${K8S_VER}/bin/linux/amd64/kubectl"
+    chmod +x /usr/local/bin/kubectl
+
+    # 全サーバーをスケールダウン
+    echo "→ 全サーバーをスケールダウン中..."
+    for D in ${ALL_DEPLOYS}; do
+      kubectl scale deployment "${D}" -n "${NAMESPACE}" --replicas=0
+      echo "  ${D}: replicas=0"
+    done
+
+    # terminationGracePeriodSeconds: 120 を考慮してポッド終了待機
+    echo "→ Pod 終了待機中（60秒）..."
+    sleep 60
+
+    # --- Bedrock バックアップ ---
+    BE_TAR="/tmp/${DATE_STR}_BE.tar.gz"
+    echo "→ Bedrock バックアップ作成中: $(basename ${BE_TAR})"
+    tar -czf "${BE_TAR}" \
+      -C /data/bedrock \
+      worlds \
+      permissions.json \
+      server.properties \
+      allowlist.json \
+      2>/dev/null || echo "  警告: Bedrock バックアップ対象ファイルが一部見つかりません"
+    echo "  サイズ: $(du -sh ${BE_TAR} | cut -f1)"
+
+    # --- Java バックアップ（サーバーごとに個別アーカイブ）---
+    # 複数ワールド（world, world_nether, world_the_end 等）を含むため個別管理
+    for SERVER in survival lobby mod; do
+      TAR_FILE="/tmp/${DATE_STR}_${SERVER}.tar.gz"
+      echo "→ Java/${SERVER} バックアップ作成中: $(basename ${TAR_FILE})"
+
+      ITEMS=()
+      for ITEM in server.properties ops.json whitelist.json; do
+        f="/data/${SERVER}/${ITEM}"
+        [ -f "${f}" ] && ITEMS+=("${f}")
+      done
+      # world, world_nether, world_the_end 等を一括取得
+      while IFS= read -r -d '' d; do
+        ITEMS+=("${d}")
+      done < <(find "/data/${SERVER}" -maxdepth 1 -name 'world*' -type d -print0 2>/dev/null)
+
+      if [ "${#ITEMS[@]}" -gt 0 ]; then
+        tar -czf "${TAR_FILE}" "${ITEMS[@]}"
+        echo "  サイズ: $(du -sh ${TAR_FILE} | cut -f1)"
+      else
+        echo "  警告: /data/${SERVER} にバックアップ対象が見つかりません"
+      fi
+    done
+
+    # 全サーバーをスケールアップ（GCS アップロード前に復旧してダウンタイムを最小化）
+    echo "→ 全サーバーをスケールアップ中..."
+    for D in ${ALL_DEPLOYS}; do
+      kubectl scale deployment "${D}" -n "${NAMESPACE}" --replicas=1
+      echo "  ${D}: replicas=1"
+    done
+    trap - ERR  # 正常スケールアップ後はトラップ解除
+
+    # --- GCS アップロード（4ファイル: BE / survival / lobby / mod）---
+    echo "→ GCS にアップロード中 (${BUCKET})..."
+    for TAR_FILE in \
+      "/tmp/${DATE_STR}_BE.tar.gz" \
+      "/tmp/${DATE_STR}_survival.tar.gz" \
+      "/tmp/${DATE_STR}_lobby.tar.gz" \
+      "/tmp/${DATE_STR}_mod.tar.gz"; do
+      if [ -s "${TAR_FILE}" ]; then
+        FNAME=$(basename "${TAR_FILE}")
+        gsutil cp "${TAR_FILE}" "${BUCKET}/${FNAME}"
+        echo "  完了: ${FNAME}"
+        rm -f "${TAR_FILE}"
+      else
+        echo "  スキップ: ${TAR_FILE} が空または存在しません"
+      fi
+    done
+
+    echo "✓ GCS バックアップ完了: ${DATE_STR}"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gcs-backup-cronjob
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: gcs-backup
+    app.kubernetes.io/component: cronjob
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+spec:
+  schedule: "0 3 1 * *"  # 毎月1日 03:00 JST
+  timeZone: "Asia/Tokyo"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: gcs-backup
+            app.kubernetes.io/component: cronjob
+        spec:
+          serviceAccountName: gcs-backup-sa
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: google/cloud-sdk:slim
+              command: ["/bin/bash", "/scripts/backup.sh"]
+              env:
+                - name: GOOGLE_APPLICATION_CREDENTIALS
+                  value: /secrets/gcs-key.json
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: script-volume
+                  mountPath: /scripts
+                  readOnly: true
+                - name: gcs-credentials
+                  mountPath: /secrets
+                  readOnly: true
+                - name: data-bedrock
+                  mountPath: /data/bedrock
+                  readOnly: true
+                - name: data-survival
+                  mountPath: /data/survival
+                  readOnly: true
+                - name: data-lobby
+                  mountPath: /data/lobby
+                  readOnly: true
+                - name: data-mod
+                  mountPath: /data/mod
+                  readOnly: true
+          volumes:
+            - name: script-volume
+              configMap:
+                name: gcs-backup-script-cm
+                defaultMode: 0755
+            - name: gcs-credentials
+              secret:
+                secretName: gcs-backup-credentials
+                items:
+                  - key: key.json
+                    path: gcs-key.json
+            - name: data-bedrock
+              persistentVolumeClaim:
+                claimName: pvc-bedrock
+            - name: data-survival
+              persistentVolumeClaim:
+                claimName: pvc-survival
+            - name: data-lobby
+              persistentVolumeClaim:
+                claimName: pvc-lobby
+            - name: data-mod
+              persistentVolumeClaim:
+                claimName: pvc-mod
