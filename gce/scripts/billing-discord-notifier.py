@@ -74,9 +74,18 @@ def _ack_messages(token: str, ack_ids: list) -> None:
         resp.read()
 
 
-def _send_discord(webhook_url: str, data: dict) -> None:
-    """Budget アラートデータから Discord embed を構築して送信する。"""
+def _send_discord(webhook_url: str, data: dict) -> bool:
+    """Budget アラートデータから Discord embed を構築して送信する。
+
+    閾値超過なし（threshold == 0）の場合は通知不要として False を返す。
+    """
     threshold = float(data.get("alertThresholdExceeded", 0))
+
+    # GCP は Budget 更新のたびに alertThresholdExceeded なしのメッセージも送る。
+    # 実際に閾値を超えたときだけ通知する。
+    if threshold == 0:
+        return False
+
     cost      = float(data.get("costAmount", 0))
     budget    = float(data.get("budgetAmount", 0))
     name      = data.get("budgetDisplayName", "Minecraft Infrastructure")
@@ -119,6 +128,7 @@ def _send_discord(webhook_url: str, data: dict) -> None:
     with urllib.request.urlopen(req, timeout=10) as resp:
         resp.read()
     print(f"Discord 通知送信完了: {pct}% アラート", flush=True)
+    return True
 
 
 def main() -> None:
@@ -137,7 +147,9 @@ def main() -> None:
         try:
             raw  = base64.b64decode(msg["message"]["data"]).decode("utf-8")
             data = json.loads(raw)
-            _send_discord(webhook_url, data)
+            notified = _send_discord(webhook_url, data)
+            if not notified:
+                print("閾値超過なし: ACK のみ実行", flush=True)
         except Exception as e:
             print(f"通知失敗（ACK はスキップ）: {e}", flush=True)
             ack_ids.pop()  # 失敗したメッセージは ACK しない（リトライさせる）
