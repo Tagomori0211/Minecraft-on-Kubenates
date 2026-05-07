@@ -16,7 +16,7 @@ services:
       # メモリ上限: e2-small (2GB) に合わせて控えめに設定
       - "-memory.allowedPercent=40"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8428/health"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8428/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
