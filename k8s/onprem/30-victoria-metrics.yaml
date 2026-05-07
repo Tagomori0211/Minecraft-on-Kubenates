@@ -104,6 +104,55 @@ data:
 
 ---
 # ============================================================
+# vmagent 用 ServiceAccount / RBAC
+# ============================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vm-sa
+  namespace: monitoring-prometheus
+  labels:
+    app.kubernetes.io/name: "vmagent"
+    app.kubernetes.io/component: "monitoring"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vm-sa-clusterrole
+  labels:
+    app.kubernetes.io/name: "vmagent"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
+rules:
+  - apiGroups: [""]
+    resources: [nodes, nodes/metrics, nodes/proxy, services, endpoints, pods]
+    verbs: [get, list, watch]
+  - nonResourceURLs: [/metrics, /metrics/cadvisor]
+    verbs: [get]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vm-sa-clusterrolebinding
+  labels:
+    app.kubernetes.io/name: "vmagent"
+    app.kubernetes.io/managed-by: "kubectl"
+    env: "prod"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vm-sa-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: vm-sa
+    namespace: monitoring-prometheus
+
+---
+# ============================================================
 # vmagent Deployment
 # ============================================================
 apiVersion: apps/v1
