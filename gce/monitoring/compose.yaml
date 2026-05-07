@@ -26,8 +26,8 @@ services:
     container_name: grafana
     restart: unless-stopped
     ports:
-      # IAP SSH トンネル経由のみ（外部非公開）
-      - "127.0.0.1:3000:3000"
+      # Tailscale 経由でのみ到達可能（GCE ファイアウォールで外部非公開）
+      - "3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./provisioning:/etc/grafana/provisioning:ro
@@ -36,7 +36,7 @@ services:
       # 初回ログイン後に必ず変更すること
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_SERVER_ROOT_URL=http://gce-mc-monitoring:3000
       - GF_ANALYTICS_REPORTING_ENABLED=false
     depends_on:
       victoria-metrics:
