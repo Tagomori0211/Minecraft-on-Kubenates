@@ -263,5 +263,10 @@ MC_addon-raw/
 *.mcpack
 *.mctemplate
 
-# ModList
+# ModList（modlist.html / 大容量ファイルは除外、スクリプトとmrpackは追跡）
 ModList/*
+!ModList/gen_mrpack.py
+!ModList/mrpack/
+ModList/mrpack/*
+!ModList/mrpack/*.mrpack
+!ModList/mrpack/modrinth.index.json
