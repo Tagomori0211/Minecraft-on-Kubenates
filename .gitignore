@@ -267,11 +267,14 @@ MC_addon-raw/
 ModList/*
 !ModList/gen_mrpack.py
 !ModList/gen_cfpack.py
+!ModList/gen_cfpack_complete.py
 !ModList/mrpack/
 ModList/mrpack/*
 !ModList/mrpack/*.mrpack
 !ModList/mrpack/modrinth.index.json
 !ModList/cfpack/
 ModList/cfpack/*
-!ModList/cfpack/*.zip
+!ModList/cfpack/sushiJava-1.0.0-cf.zip
 !ModList/cfpack/manifest.json
+# 完結版zip (101MB超のため GitHub 管理外、gen_cfpack_complete.py でローカル生成)
+ModList/cfpack_cache/
