@@ -3,27 +3,30 @@
 # namespace: minecraft-data
 #
 # デプロイ手順:
-#   1. mariadb-auth-secret.yaml を作成して apply
-#      (mariadb-auth-secret.yaml.example を参照)
-#   2. 下記コマンドでインストール
+#   1. rsync でワーカーに転送
+#      rsync -avz /home/shinari/Minecraft_java_k3s/k8s/onprem/helm/values-mariadb.yaml \
+#        k3s-worker:~/k8s_manifests/helm/values-mariadb.yaml
 #
-# rsync -avz /home/shinari/Minecraft_java_k3s/k8s/onprem/helm/values-mariadb.yaml \
-#   k3s-worker:~/k8s_manifests/helm/values-mariadb.yaml
+#   2. namespace 作成
+#      ssh k3s-worker "sudo kubectl create namespace minecraft-data \
+#        --dry-run=client -o yaml | sudo kubectl apply -f -"
 #
-# ssh k3s-worker "sudo kubectl create namespace minecraft-data --dry-run=client -o yaml | \
-#   sudo kubectl apply -f -"
-#
-# ssh k3s-worker "sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm install mariadb \
-#   oci://registry-1.docker.io/bitnamicharts/mariadb \
-#   -f ~/k8s_manifests/helm/values-mariadb.yaml \
-#   -n minecraft-data"
+#   3. パスワードを --set で渡してインストール（existingSecret 方式は初期化バグあり）
+#      ROOT_PASS="<rootパスワード>"
+#      PS_PASS="<playersyncパスワード>"
+#      ssh k3s-worker "sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm install mariadb \
+#        oci://registry-1.docker.io/bitnamicharts/mariadb \
+#        -f ~/k8s_manifests/helm/values-mariadb.yaml \
+#        --set auth.rootPassword='${ROOT_PASS}' \
+#        --set auth.password='${PS_PASS}' \
+#        -n minecraft-data"
 # ============================================================
 
 architecture: standalone
 
 auth:
-  # 認証情報は全て Secret から注入 (mariadb-auth-secret を参照)
-  existingSecret: "mariadb-auth-secret"
+  # パスワードは helm install/upgrade 時に --set で渡す
+  # (existingSecret + _FILE 方式は Bitnami 25.x の初期化タイミング問題あり)
   database: "playersync"
   username: "playersync"
 
@@ -44,6 +47,8 @@ primary:
   # MariaDB サーバー設定
   configuration: |-
     [mysqld]
+    socket                   = /opt/bitnami/mariadb/tmp/mysql.sock
+    pid-file                 = /opt/bitnami/mariadb/tmp/mysqld.pid
     max_connections          = 50
     character-set-server     = utf8mb4
     collation-server         = utf8mb4_unicode_ci
@@ -52,6 +57,7 @@ primary:
     innodb_buffer_pool_size  = 256M
 
     [client]
+    socket                = /opt/bitnami/mariadb/tmp/mysql.sock
     default-character-set = utf8mb4
 
 # メトリクス (Prometheus scraperが整備された後で有効化)
