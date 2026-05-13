@@ -63,7 +63,7 @@ server:
     - "gravestone-mod"
     - "carry-on"
     - "cosmetic-armor-reworked-forked"
-    - "playersync"
+    - "playersync:mK3hQ8Vs"
   extraConfigMaps:
     - name: "industry-playersync-cm"
       mountPath: "/data/config/playersync.toml"
@@ -78,7 +78,7 @@ server:
     - name: CF_ALLOWED_VERSION_TYPE
       value: "alpha"
     - name: CF_PROJECTS
-      value: "306345,246763" # TerraBlender, GeckoLib
+      value: "306345,246763" # 306345=TerraBlender / 246763=用途不明(GeckoLibではない、実CF ID=388172)
     - name: MODS
       value: "https://www.curseforge.com/api/v1/mods/227639/files/7797302/download"
 

@@ -81,7 +81,7 @@ server:
     - "cosmetic-armor-reworked-forked"
     - "carry-on"
     - "gravestone-mod"
-    - "playersync"
+    - "playersync:mK3hQ8Vs"
   extraConfigMaps:
     - name: "lobby-playersync-cm"
       mountPath: "/data/config/playersync.toml"
@@ -92,7 +92,7 @@ server:
     - name: MODRINTH_DOWNLOAD_DEPENDENCIES
       value: "REQUIRED"
     - name: CF_PROJECTS
-      value: "306345,543592"
+      value: "306345,543592" # 306345=TerraBlender / 543592=用途不明(Modrinth重複or無効ID疑い)
     - name: CF_DOWNLOAD_DEPENDENCIES
       value: "REQUIRED"
     - name: CF_ALLOWED_VERSION_TYPE

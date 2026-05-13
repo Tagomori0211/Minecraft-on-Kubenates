@@ -63,7 +63,7 @@ server:
     - "cosmetic-armor-reworked-forked"
     - "carry-on"
     - "gravestone-mod"
-    - "playersync"
+    - "playersync:mK3hQ8Vs"
   extraConfigMaps:
     - name: "survival-playersync-cm"
       mountPath: "/data/config/playersync.toml"
@@ -74,7 +74,7 @@ server:
     - name: MODRINTH_DOWNLOAD_DEPENDENCIES
       value: "REQUIRED"
     - name: CF_PROJECTS
-      value: "306345,246763" # TerraBlender, GeckoLib (Already on client/server mostly)
+      value: "306345,246763" # 306345=TerraBlender / 246763=用途不明(GeckoLibではない、実CF ID=388172)
     - name: MODS
       value: "https://www.curseforge.com/api/v1/mods/227639/files/7797302/download"
     - name: CF_DOWNLOAD_DEPENDENCIES
