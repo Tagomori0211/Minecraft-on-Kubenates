@@ -26,8 +26,9 @@ spec:
         prometheus.io/path: "/metrics"
     spec:
       terminationGracePeriodSeconds: 120
-{{- if .Values.velocity.enabled }}
+{{- if or .Values.velocity.enabled .Values.server.extraConfigMaps }}
       initContainers:
+{{- if .Values.velocity.enabled }}
         - name: inject-velocity-secret
           image: busybox:1.36
           command: ["sh", "-c"]
@@ -44,6 +45,25 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+{{- end }}
+{{- if .Values.server.extraConfigMaps }}
+        - name: copy-extra-configs
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              mkdir -p /data/config
+              {{- range .Values.server.extraConfigMaps }}
+              cp /cm-staging-{{ .name }}/{{ .subPath }} {{ .mountPath }}
+              {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            {{- range .Values.server.extraConfigMaps }}
+            - name: cm-{{ .name }}
+              mountPath: /cm-staging-{{ .name }}
+            {{- end }}
+{{- end }}
 {{- end }}
       containers:
         - name: minecraft
@@ -75,11 +95,6 @@ spec:
           volumeMounts:
             - mountPath: /data
               name: data
-{{- range .Values.server.extraConfigMaps }}
-            - mountPath: {{ .mountPath }}
-              name: cm-{{ .name }}
-              subPath: {{ .subPath }}
-{{- end }}
           resources:
             requests:
               memory: "{{ .Values.server.memoryRequest }}"

@@ -11,8 +11,8 @@
 #   rsync k8s/onprem/playersync-configmaps.yaml k3s-worker:~/k8s_manifests/
 #   ssh k3s-worker "sudo kubectl apply -f ~/k8s_manifests/playersync-configmaps.yaml"
 #
-# ⚠️ 注意: playersync.toml のキー名は初回起動後に自動生成されるファイルで
-#    確認して調整すること（mod バージョンによって差異がある場合あり）
+# ⚠️ 注意: 実際の設定ファイル名は playersync-common.toml
+#    キー名は playersync-1.21.1-2.1.5 の自動生成ファイルで確認済み
 # ============================================================
 ---
 apiVersion: v1
@@ -26,37 +26,25 @@ metadata:
     app.kubernetes.io/managed-by: kubectl
     env: prod
 data:
-  playersync.toml: |
-    # PlayersSync 1.21.1-2.1.5 設定 (Lobby サーバー)
-    [database]
-      type = "MYSQL"
-      host = "mariadb.minecraft-data.svc.cluster.local"
-      port = 3306
-      database = "playersync"
-      username = "playersync"
-      password = "REPLACE_WITH_DB_PASSWORD"
-
-    [server]
-      id = "lobby"
-
-    [sync]
-      inventory   = true
-      armor       = true
-      offhand     = true
-      enderchest  = true
-      experience  = true
-      health      = true
-      hunger      = true
-      gamemode    = false   # サーバーごとに固定するため同期しない
-      advancements = false  # サーバー固有の実績を保持
-      statistics  = false
-
-    [chat]
-      # 既知バグ (1.21.1-2.1.5) のため無効化
-      enabled = false
-
-    [debug]
-      logging = false
+  playersync-common.toml: |
+    #General settings
+    [general]
+    	host = "mariadb.minecraft-data.svc.cluster.local"
+    	db_port = 3306
+    	use_ssl = false
+    	user_name = "playersync"
+    	password = "REPLACE_WITH_DB_PASSWORD"
+    	db_name = "playersync"
+    	Server_id = 1
+    	sync_world = []
+    	sync_advancements = false
+    	sync_chat = false
+    	IsChatServer = false
+    	ChatServerIP = "127.0.0.1"
+    	ChatServerPort = 7900
+    	use_legacy_serialization = false
+    	item_placeholder_title_override = ""
+    	item_placeholder_description_override = ""
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -69,36 +57,25 @@ metadata:
     app.kubernetes.io/managed-by: kubectl
     env: prod
 data:
-  playersync.toml: |
-    # PlayersSync 1.21.1-2.1.5 設定 (Survival サーバー)
-    [database]
-      type = "MYSQL"
-      host = "mariadb.minecraft-data.svc.cluster.local"
-      port = 3306
-      database = "playersync"
-      username = "playersync"
-      password = "REPLACE_WITH_DB_PASSWORD"
-
-    [server]
-      id = "survival"
-
-    [sync]
-      inventory   = true
-      armor       = true
-      offhand     = true
-      enderchest  = true
-      experience  = true
-      health      = true
-      hunger      = true
-      gamemode    = false
-      advancements = false
-      statistics  = false
-
-    [chat]
-      enabled = false
-
-    [debug]
-      logging = false
+  playersync-common.toml: |
+    #General settings
+    [general]
+    	host = "mariadb.minecraft-data.svc.cluster.local"
+    	db_port = 3306
+    	use_ssl = false
+    	user_name = "playersync"
+    	password = "REPLACE_WITH_DB_PASSWORD"
+    	db_name = "playersync"
+    	Server_id = 2
+    	sync_world = []
+    	sync_advancements = false
+    	sync_chat = false
+    	IsChatServer = false
+    	ChatServerIP = "127.0.0.1"
+    	ChatServerPort = 7900
+    	use_legacy_serialization = false
+    	item_placeholder_title_override = ""
+    	item_placeholder_description_override = ""
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -111,33 +88,22 @@ metadata:
     app.kubernetes.io/managed-by: kubectl
     env: prod
 data:
-  playersync.toml: |
-    # PlayersSync 1.21.1-2.1.5 設定 (Industry サーバー)
-    [database]
-      type = "MYSQL"
-      host = "mariadb.minecraft-data.svc.cluster.local"
-      port = 3306
-      database = "playersync"
-      username = "playersync"
-      password = "REPLACE_WITH_DB_PASSWORD"
-
-    [server]
-      id = "industry"
-
-    [sync]
-      inventory   = true
-      armor       = true
-      offhand     = true
-      enderchest  = true
-      experience  = true
-      health      = true
-      hunger      = true
-      gamemode    = false
-      advancements = false
-      statistics  = false
-
-    [chat]
-      enabled = false
-
-    [debug]
-      logging = false
+  playersync-common.toml: |
+    #General settings
+    [general]
+    	host = "mariadb.minecraft-data.svc.cluster.local"
+    	db_port = 3306
+    	use_ssl = false
+    	user_name = "playersync"
+    	password = "REPLACE_WITH_DB_PASSWORD"
+    	db_name = "playersync"
+    	Server_id = 3
+    	sync_world = []
+    	sync_advancements = false
+    	sync_chat = false
+    	IsChatServer = false
+    	ChatServerIP = "127.0.0.1"
+    	ChatServerPort = 7900
+    	use_legacy_serialization = false
+    	item_placeholder_title_override = ""
+    	item_placeholder_description_override = ""
