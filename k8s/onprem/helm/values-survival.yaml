@@ -57,7 +57,7 @@ server:
     - "botany-pots"
     - "botany-trees"
     - "mekanismmoremachine"
-    - "mekanism-lasers"
+    - "mekanism-lasers:r5nDcriB"
     - "mekanism_extra"
     - "evolved-mekanism"
     - "cosmetic-armor-reworked-forked"
