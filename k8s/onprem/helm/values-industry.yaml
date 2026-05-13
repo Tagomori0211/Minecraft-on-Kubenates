@@ -60,6 +60,7 @@ server:
     - "mekanism-lasers:r5nDcriB"
     - "mekanism_extra"
     - "evolved-mekanism"
+    - "gravestone-mod"
   extraEnv:
     - name: MODRINTH_ALLOWED_VERSION_TYPE
       value: "alpha"
