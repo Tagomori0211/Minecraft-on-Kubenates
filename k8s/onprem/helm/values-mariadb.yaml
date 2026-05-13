@@ -1,0 +1,63 @@
+# ============================================================
+# Bitnami MariaDB Helm Chart Values
+# namespace: minecraft-data
+#
+# デプロイ手順:
+#   1. mariadb-auth-secret.yaml を作成して apply
+#      (mariadb-auth-secret.yaml.example を参照)
+#   2. 下記コマンドでインストール
+#
+# rsync -avz /home/shinari/Minecraft_java_k3s/k8s/onprem/helm/values-mariadb.yaml \
+#   k3s-worker:~/k8s_manifests/helm/values-mariadb.yaml
+#
+# ssh k3s-worker "sudo kubectl create namespace minecraft-data --dry-run=client -o yaml | \
+#   sudo kubectl apply -f -"
+#
+# ssh k3s-worker "sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm install mariadb \
+#   oci://registry-1.docker.io/bitnamicharts/mariadb \
+#   -f ~/k8s_manifests/helm/values-mariadb.yaml \
+#   -n minecraft-data"
+# ============================================================
+
+architecture: standalone
+
+auth:
+  # 認証情報は全て Secret から注入 (mariadb-auth-secret を参照)
+  existingSecret: "mariadb-auth-secret"
+  database: "playersync"
+  username: "playersync"
+
+primary:
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+  persistence:
+    enabled: true
+    storageClass: "local-path"
+    size: "20Gi"
+
+  # MariaDB サーバー設定
+  configuration: |-
+    [mysqld]
+    max_connections          = 50
+    character-set-server     = utf8mb4
+    collation-server         = utf8mb4_unicode_ci
+    bind-address             = 0.0.0.0
+    skip-name-resolve        = ON
+    innodb_buffer_pool_size  = 256M
+
+    [client]
+    default-character-set = utf8mb4
+
+# メトリクス (Prometheus scraperが整備された後で有効化)
+metrics:
+  enabled: false
+
+# 不要なリソース削減
+serviceAccount:
+  create: false

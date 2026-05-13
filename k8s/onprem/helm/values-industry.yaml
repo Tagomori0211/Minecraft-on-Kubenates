@@ -63,6 +63,11 @@ server:
     - "gravestone-mod"
     - "carry-on"
     - "cosmetic-armor-reworked-forked"
+    - "playersync"
+  extraConfigMaps:
+    - name: "industry-playersync-cm"
+      mountPath: "/data/config/playersync.toml"
+      subPath: "playersync.toml"
   extraEnv:
     - name: MODRINTH_ALLOWED_VERSION_TYPE
       value: "alpha"

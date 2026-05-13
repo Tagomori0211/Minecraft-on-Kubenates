@@ -75,6 +75,11 @@ spec:
           volumeMounts:
             - mountPath: /data
               name: data
+{{- range .Values.server.extraConfigMaps }}
+            - mountPath: {{ .mountPath }}
+              name: cm-{{ .name }}
+              subPath: {{ .subPath }}
+{{- end }}
           resources:
             requests:
               memory: "{{ .Values.server.memoryRequest }}"
@@ -114,3 +119,8 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: pvc-{{ .Values.server.name }}
+{{- range .Values.server.extraConfigMaps }}
+        - name: cm-{{ .name }}
+          configMap:
+            name: {{ .name }}
+{{- end }}

@@ -265,3 +265,6 @@ MC_addon-raw/
 
 # ModList（全ファイル管理外）
 ModList/
+
+# PlayersSync ConfigMap（DB パスワードを含むため管理外）
+k8s/onprem/playersync-configmaps.yaml
