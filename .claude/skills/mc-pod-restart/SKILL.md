@@ -11,6 +11,7 @@
 | industry (MOD) | deploy-mod | mc-mod | values-industry.yaml |
 | survival | deploy-survival | mc-survival | values-survival.yaml |
 | lobby | deploy-lobby | mc-lobby | values-lobby.yaml |
+| bedrock | deploy-bedrock | mc-bedrock | （Helmなし・直接kubectl管理）|
 
 ## 手順
 
@@ -42,6 +43,25 @@
    ssh k3s-worker "sudo kubectl logs -n minecraft -l app=<label> -c minecraft --tail=120 -f"
    ```
    readiness が `2/2` になればOK。`mc-monitor` サイドカーも含めて両方Ready。
+
+## bedrock 専用手順（Helm なし）
+
+bedrock は Helm 管理外のため、step 3（helm upgrade）は不要。
+
+```bash
+# 停止
+ssh k3s-worker "sudo kubectl scale deployment/deploy-bedrock -n minecraft --replicas=0"
+
+# 完全終了待機
+ssh k3s-worker "sudo kubectl wait --for=delete pod -l app=mc-bedrock -n minecraft --timeout=180s"
+
+# 起動
+ssh k3s-worker "sudo kubectl scale deployment/deploy-bedrock -n minecraft --replicas=1"
+
+# 確認
+ssh k3s-worker "sudo kubectl get pods -n minecraft -l app=mc-bedrock"
+ssh k3s-worker "sudo kubectl logs -n minecraft -l app=mc-bedrock -c bedrock --tail=60"
+```
 
 ## トラブルシュート
 - pod が `ImagePullBackOff` / `Error` の場合は `kubectl describe pod` を確認

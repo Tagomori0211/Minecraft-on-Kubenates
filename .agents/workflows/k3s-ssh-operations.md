@@ -84,14 +84,30 @@ ssh k3s-worker 'sudo kubectl logs deploy/deploy-bedrock -c bedrock -n minecraft 
 ssh k3s-worker 'sudo kubectl logs deploy/mc-survival -n minecraft --tail=20'
 ```
 
-### BDS スケール操作（必ず 0 → 1 の順、rollout restart 禁止）
+### ⚠️ 全サーバー共通: Pod 再起動は必ず replicas 0 → 1（rollout restart 絶対禁止）
+
+`minecraft` namespace の **すべての Deployment**（lobby / survival / mod / bedrock）に適用。
+
+**理由:** `rollout restart` や rolling update は旧Pod・新Podが瞬間的に並走し、合計メモリ要求が物理メモリを超えて OOMキラー発動。特に mod(30Gi)・survival(16Gi) で顕著。
 
 ```bash
-ssh k3s-worker 'sudo kubectl scale deployment deploy-bedrock -n minecraft --replicas=0'
+# ❌ 禁止
+ssh k3s-worker 'sudo kubectl rollout restart deployment/deploy-survival -n minecraft'
+
+# ✅ 正しい手順（survival の例、deploy-lobby / deploy-mod / deploy-bedrock も同様）
+ssh k3s-worker 'sudo kubectl scale deployment deploy-survival -n minecraft --replicas=0'
+# 旧Podの完全終了を確認してから
+ssh k3s-worker 'sudo kubectl scale deployment deploy-survival -n minecraft --replicas=1'
 ```
 
+helm upgrade を伴う場合:
 ```bash
-ssh k3s-worker 'sudo kubectl scale deployment deploy-bedrock -n minecraft --replicas=1'
+# 1. 先に停止
+ssh k3s-worker 'sudo kubectl scale deployment deploy-mod -n minecraft --replicas=0'
+# 2. 旧Pod完全終了を確認
+ssh k3s-worker 'sudo kubectl get pods -n minecraft'
+# 3. helm upgrade（template の replicas=1 が再適用されて新Pod起動）
+ssh k3s-worker 'cd ~/Minecraft_java_k3s/k8s/onprem/helm && sudo helm upgrade industry ./minecraft-server -f values-industry.yaml -n minecraft'
 ```
 
 ### BDS への say コマンド送信
