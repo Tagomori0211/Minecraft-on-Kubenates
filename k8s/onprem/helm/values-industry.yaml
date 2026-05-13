@@ -61,6 +61,8 @@ server:
     - "mekanism_extra"
     - "evolved-mekanism"
     - "gravestone-mod"
+    - "carry-on"
+    - "cosmetic-armor-reworked-forked"
   extraEnv:
     - name: MODRINTH_ALLOWED_VERSION_TYPE
       value: "alpha"
