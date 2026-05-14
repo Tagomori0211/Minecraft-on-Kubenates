@@ -34,6 +34,10 @@ server:
     - "ferrite-core"
   extraEnv: []
 
+  # SPIGET_RESOURCES: SpigotMC のリソース ID（Paper サーバー用プラグイン）
+  # 例: ["390", "391"]  # 390=Multiverse Core, 391=Multiverse Portals
+  plugins: []
+
   # 追加 ConfigMap のマウント設定（mod config ファイル注入等）
   # 例:
   #   - name: "lobby-playersync-cm"

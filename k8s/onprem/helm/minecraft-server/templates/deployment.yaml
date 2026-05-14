@@ -82,9 +82,19 @@ spec:
             - { name: TZ, value: "Asia/Tokyo" }
             - name: JVM_XX_OPTS
               value: "{{ .Values.server.jvmOpts }}"
-{{- if or .Values.velocity.enabled .Values.server.mods }}
+{{- if and (ne .Values.server.type "PAPER") (or .Values.velocity.enabled .Values.server.mods) }}
             - name: MODRINTH_PROJECTS
               value: {{ (concat (list "neoforged-velocity-support") (default (list) .Values.server.mods)) | join "," | quote }}
+{{- else if and (eq .Values.server.type "PAPER") .Values.server.mods }}
+            - name: MODRINTH_PROJECTS
+              value: {{ .Values.server.mods | join "," | quote }}
+{{- end }}
+{{- if and (eq .Values.server.type "PAPER") .Values.velocity.enabled }}
+            - { name: PAPER_VELOCITY_PROXY, value: "TRUE" }
+{{- end }}
+{{- if .Values.server.plugins }}
+            - name: SPIGET_RESOURCES
+              value: {{ .Values.server.plugins | join "," | quote }}
 {{- end }}
 {{- with .Values.server.extraEnv }}
 {{ toYaml . | nindent 12 }}
