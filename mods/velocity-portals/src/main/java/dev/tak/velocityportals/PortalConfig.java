@@ -1,5 +1,6 @@
 package dev.tak.velocityportals;
 
+import com.electronwill.nightconfig.core.UnmodifiableConfig;
 import com.electronwill.nightconfig.core.file.CommentedFileConfig;
 import com.electronwill.nightconfig.core.file.FileWatcher;
 import net.neoforged.fml.loading.FMLPaths;
@@ -11,7 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * velocityportals.toml を読み込み、PortalZone リストを管理する。
@@ -50,13 +50,15 @@ public class PortalConfig {
         try {
             FileWatcher.defaultInstance().addWatch(configPath, PortalConfig::loadConfig);
             LOGGER.info("[VelocityPortals] 設定ファイルの自動リロードを有効化しました");
-        } catch (IOException e) {
+        } catch (Exception e) {
             LOGGER.warn("[VelocityPortals] FileWatcher の登録に失敗しました: {}", e.getMessage());
         }
     }
 
-    /** 設定ファイルを読み込んで zones を更新する。 */
-    @SuppressWarnings("unchecked")
+    /**
+     * 設定ファイルを読み込んで zones を更新する。
+     * nightconfig の [[portals]] エントリは UnmodifiableConfig として返される。
+     */
     public static synchronized void loadConfig() {
         if (configPath == null || !Files.exists(configPath)) return;
 
@@ -64,19 +66,20 @@ public class PortalConfig {
         try (CommentedFileConfig cfg = CommentedFileConfig.builder(configPath).build()) {
             cfg.load();
 
-            List<Map<String, Object>> portals = cfg.getOrElse("portals", List.of());
-            for (Map<String, Object> p : portals) {
-                String name        = getString(p, "name", "unnamed");
-                String target      = getString(p, "target_server", "survival");
-                int    dimension   = getInt(p, "dimension", 0);
-                double minX        = getDouble(p, "min_x", 0.0);
-                double minY        = getDouble(p, "min_y", 60.0);
-                double minZ        = getDouble(p, "min_z", 0.0);
-                double maxX        = getDouble(p, "max_x", 3.0);
-                double maxY        = getDouble(p, "max_y", 64.0);
-                double maxZ        = getDouble(p, "max_z", 3.0);
+            // [[portals]] の各エントリは UnmodifiableConfig (StampedConfig) で返される
+            List<UnmodifiableConfig> portals = cfg.getOrElse("portals", List.of());
+            for (UnmodifiableConfig p : portals) {
+                String name   = p.getOrElse("name", "unnamed");
+                String target = p.getOrElse("target_server", "survival");
+                int    dim    = toInt(p.getOrElse("dimension", 0));
+                double minX   = toDouble(p.getOrElse("min_x", 0.0));
+                double minY   = toDouble(p.getOrElse("min_y", 60.0));
+                double minZ   = toDouble(p.getOrElse("min_z", 0.0));
+                double maxX   = toDouble(p.getOrElse("max_x", 3.0));
+                double maxY   = toDouble(p.getOrElse("max_y", 64.0));
+                double maxZ   = toDouble(p.getOrElse("max_z", 3.0));
 
-                loaded.add(new PortalZone(name, target, dimension, minX, minY, minZ, maxX, maxY, maxZ));
+                loaded.add(new PortalZone(name, target, dim, minX, minY, minZ, maxX, maxY, maxZ));
                 LOGGER.info("[VelocityPortals] ポータル読み込み: {}", loaded.get(loaded.size() - 1));
             }
         } catch (Exception e) {
@@ -91,23 +94,16 @@ public class PortalConfig {
         return zones;
     }
 
-    // ---- ヘルパー ----
+    // ---- ヘルパー: nightconfig は TOML 整数を Long、小数を Double で返す ----
 
-    private static String getString(Map<String, Object> map, String key, String def) {
-        Object v = map.get(key);
-        return v != null ? v.toString() : def;
-    }
-
-    private static int getInt(Map<String, Object> map, String key, int def) {
-        Object v = map.get(key);
+    private static int toInt(Object v) {
         if (v instanceof Number n) return n.intValue();
-        return def;
+        return 0;
     }
 
-    private static double getDouble(Map<String, Object> map, String key, double def) {
-        Object v = map.get(key);
+    private static double toDouble(Object v) {
         if (v instanceof Number n) return n.doubleValue();
-        return def;
+        return 0.0;
     }
 
     /** デフォルト設定ファイルをコメント付きで生成する。 */
@@ -117,30 +113,31 @@ public class PortalConfig {
             "# ポータルゾーンを [[portals]] ブロックで複数定義できます。\n" +
             "# ゾーン内に入ったプレイヤーは target_server へ転送されます。\n" +
             "# dimension: 0=overworld, -1=nether, 1=end\n" +
+            "# target_server は Velocity の velocity.toml [servers] セクションのキー名\n" +
             "\n" +
             "# 例: survival ポータル (座標 100,60,100 ～ 103,64,103)\n" +
             "[[portals]]\n" +
-            "  name         = \"survival-portal\"\n" +
+            "  name          = \"survival-portal\"\n" +
             "  target_server = \"survival\"\n" +
-            "  dimension    = 0\n" +
-            "  min_x        = 100.0\n" +
-            "  min_y        = 60.0\n" +
-            "  min_z        = 100.0\n" +
-            "  max_x        = 103.0\n" +
-            "  max_y        = 64.0\n" +
-            "  max_z        = 103.0\n" +
+            "  dimension     = 0\n" +
+            "  min_x         = 100.0\n" +
+            "  min_y         = 60.0\n" +
+            "  min_z         = 100.0\n" +
+            "  max_x         = 103.0\n" +
+            "  max_y         = 64.0\n" +
+            "  max_z         = 103.0\n" +
             "\n" +
             "# 例: industry ポータル\n" +
             "#[[portals]]\n" +
-            "#  name         = \"industry-portal\"\n" +
+            "#  name          = \"industry-portal\"\n" +
             "#  target_server = \"mod\"\n" +
-            "#  dimension    = 0\n" +
-            "#  min_x        = 200.0\n" +
-            "#  min_y        = 60.0\n" +
-            "#  min_z        = 200.0\n" +
-            "#  max_x        = 203.0\n" +
-            "#  max_y        = 64.0\n" +
-            "#  max_z        = 203.0\n";
+            "#  dimension     = 0\n" +
+            "#  min_x         = 200.0\n" +
+            "#  min_y         = 60.0\n" +
+            "#  min_z         = 200.0\n" +
+            "#  max_x         = 203.0\n" +
+            "#  max_y         = 64.0\n" +
+            "#  max_z         = 203.0\n";
 
         try {
             Files.writeString(configPath, content);
