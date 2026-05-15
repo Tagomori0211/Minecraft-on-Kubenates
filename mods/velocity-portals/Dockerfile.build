@@ -1,0 +1,20 @@
+# NeoForge mod をビルドするための一時コンテナ
+# build.sh から自動的に使用される
+
+FROM gradle:8.8-jdk21
+
+WORKDIR /mod
+
+# Gradle キャッシュレイヤーを先にコピーしてキャッシュ効果を高める
+COPY gradle/ gradle/
+COPY *.gradle *.properties settings.gradle ./
+
+# ソースをコピー
+COPY src/ src/
+
+# Gradle Wrapper を使ってビルド (初回は NeoForge 取得で 5〜10分かかる)
+RUN gradle build --no-daemon -x test 2>&1
+
+# build/libs/*.jar を /output へコピー (build.sh が docker cp で取得)
+RUN mkdir -p /output
+RUN cp build/libs/*-1.21.1-*.jar /output/ 2>/dev/null || cp build/libs/*.jar /output/
