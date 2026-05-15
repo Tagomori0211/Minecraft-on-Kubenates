@@ -36,6 +36,15 @@ spec:
             - |
               echo -n "${VELOCITY_SECRET}" > /data/forwarding.secret
               echo -n "${VELOCITY_SECRET}" > /data/velocity.secret
+              {{- if eq .Values.server.type "PAPER" }}
+              mkdir -p /data/config
+              if [ ! -f /data/config/paper-global.yml ]; then
+                printf 'proxies:\n  bungee-cord:\n    online-mode: true\n  proxy-protocol: false\n  velocity:\n    enabled: true\n    online-mode: true\n    secret: "%s"\n' "${VELOCITY_SECRET}" > /data/config/paper-global.yml
+              else
+                sed -i 's/enabled: false/enabled: true/g' /data/config/paper-global.yml
+                sed -i "s|    secret:.*|    secret: ${VELOCITY_SECRET}|g" /data/config/paper-global.yml
+              fi
+              {{- end }}
           env:
             - name: VELOCITY_SECRET
               valueFrom:
