@@ -1,0 +1,278 @@
+# ============================================================
+# TAK Pipeline - Minecraft ログシッパー DaemonSet
+# ============================================================
+# Minecraft Pod の stdout ログからログイン/ログアウトイベントを
+# 抽出し GCP Pub/Sub mc-raw-logs に publish する軽量Pythonスクリプト。
+#
+# Vector の gcp_pubsub sink が user ADC 形式に対応していないため
+# google-cloud-pubsub Python ライブラリを使用（ADC対応済み）。
+#
+# 前提:
+#   - Secret vector-gcp-credentials が作成済みであること
+#   - minecraft Namespace に Minecraft Pod が稼働していること
+# ============================================================
+
+---
+# ── ConfigMap: Python スクリプト ─────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mc-log-shipper-cm
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: mc-log-shipper
+    app.kubernetes.io/component: log-collector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+data:
+  ship_logs.py: |
+    """Minecraft ログシッパー: Pod ログを監視し Pub/Sub に publish。"""
+    import base64
+    import json
+    import os
+    import re
+    import time
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from google.cloud import pubsub_v1
+
+    # ── 設定 ────────────────────────────────────────────────
+    LOG_DIR = Path("/var/log/pods")
+    PROJECT_ID = os.environ["GCP_PROJECT_ID"]
+    TOPIC_NAME = "mc-raw-logs"
+
+    LOGIN_PAT = re.compile(r"^\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: (\w+) joined the game$")
+    LOGOUT_PAT = re.compile(r"^\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: (\w+) left the game$")
+    UUID_PAT = re.compile(
+        r"^\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: UUID of player (\w+) is ([0-9a-f\-]+)$"
+    )
+
+    # ── 状態 ────────────────────────────────────────────────
+    publisher = pubsub_v1.PublisherClient()
+    topic_path = publisher.topic_path(PROJECT_ID, TOPIC_NAME)
+    player_xuid: dict[str, str] = {}
+    cursor_file = Path("/tmp/shipper-data/cursor.json")
+    cursors: dict[str, int] = {}
+
+    # カーソル復元
+    if cursor_file.exists():
+        cursors = json.loads(cursor_file.read_text())
+
+
+    def get_server_name(log_path: Path) -> str:
+        """ログファイルのパスから Pod 名を抽出しサーバー識別子に変換。"""
+        # パス例: .../minecraft_survival-xxx_.../minecraft/0.log
+        parts = log_path.parts
+        for p in parts:
+            if p.startswith("minecraft_"):
+                pod_dir = p
+                break
+        else:
+            return "unknown"
+        # minecraft_survival-xxx → survival
+        name_part = pod_dir.replace("minecraft_", "")
+        server = name_part.split("-")[0] if "-" in name_part else name_part
+        if server == "survival" or server == "lobby" or server == "mod" or server == "bedrock":
+            return server
+        # Helm chart pod names: mc-survival-xxx
+        if "survival" in name_part.lower():
+            return "survival"
+        if "lobby" in name_part.lower():
+            return "lobby"
+        if "mod" in name_part.lower() or "industry" in name_part.lower():
+            return "mod"
+        if "bedrock" in name_part.lower():
+            return "bedrock"
+        return "unknown"
+
+
+    def publish_event(server: str, message: str, event_type: str):
+        """Pub/Sub mc-raw-logs にイベントを publish。"""
+        payload = {
+            "message": message,
+            "event_type": event_type,
+            "server": server,
+            "event_timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        data = json.dumps(payload).encode()
+        future = publisher.publish(topic_path, data)
+        msg_id = future.result(timeout=10)
+        print(f"PUBLISHED: {msg_id} | {event_type} | {server}")
+
+
+    def process_line(line: str, server: str):
+        """1行のログを解析し、必要に応じて publish。"""
+        line = line.strip()
+        if not line:
+            return
+
+        # UUID 行 → キャッシュ
+        m = UUID_PAT.match(line)
+        if m:
+            player_xuid[m.group(1)] = m.group(2).replace("-", "")
+            print(f"UUID_CACHED: {m.group(1)}")
+            return
+
+        # ログイン行
+        m = LOGIN_PAT.match(line)
+        if m:
+            publish_event(server, line, "login")
+            return
+
+        # ログアウト行
+        m = LOGOUT_PAT.match(line)
+        if m:
+            publish_event(server, line, "logout")
+            return
+
+
+    def save_cursors():
+        """カーソルを永続化。"""
+        cursor_file.parent.mkdir(parents=True, exist_ok=True)
+        cursor_file.write_text(json.dumps(cursors))
+
+
+    def tail_logs():
+        """全 Minecraft Pod のログファイルを tail。"""
+        scanned = set()
+
+        while True:
+            try:
+                # minecraft namespace のログファイルを探索
+                for log_path in sorted(LOG_DIR.rglob("*.log")):
+                    log_str = str(log_path)
+                    # "minecraft_" で始まるPodディレクトリのみ対象
+                    parts = log_path.parts
+                    if not any(p.startswith("minecraft_") for p in parts):
+                        continue
+                    # コンテナ名ディレクトリより下の *.log のみ
+                    if log_path.suffix != ".log":
+                        continue
+
+                    server = get_server_name(log_path)
+                    if server == "unknown":
+                        continue
+
+                    # ファイルサイズを取得
+                    try:
+                        size = log_path.stat().st_size
+                    except FileNotFoundError:
+                        continue
+
+                    # 初回: 既存ファイルは末尾から開始
+                    if log_str not in cursors:
+                        cursors[log_str] = size
+                        scanned.add(log_str)
+                        continue
+
+                    last_pos = cursors[log_str]
+
+                    # ログローテーション検出（ファイルが縮んだ）
+                    if size < last_pos:
+                        last_pos = 0
+
+                    # 新しいデータがあれば読み取り
+                    if size > last_pos:
+                        try:
+                            with open(log_path, "r") as f:
+                                f.seek(last_pos)
+                                for line in f:
+                                    process_line(line, server)
+                            cursors[log_str] = size
+                        except (OSError, UnicodeDecodeError):
+                            pass
+
+                # 定期的にカーソル保存
+                if scanned:
+                    save_cursors()
+
+                time.sleep(2)
+
+            except KeyboardInterrupt:
+                save_cursors()
+                break
+            except Exception as e:
+                print(f"ERROR: {e}")
+                time.sleep(5)
+
+
+    if __name__ == "__main__":
+        print(f"STARTING: log_dir={LOG_DIR}, project={PROJECT_ID}, topic={TOPIC_NAME}")
+        tail_logs()
+
+---
+# ── DaemonSet ──────────────────────────────────────────────
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: mc-log-shipper
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: mc-log-shipper
+    app.kubernetes.io/component: log-collector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mc-log-shipper
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mc-log-shipper
+        app.kubernetes.io/component: log-collector
+    spec:
+      containers:
+        - name: log-shipper
+          image: python:3.12-slim
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              pip install --quiet google-cloud-pubsub 2>&1 | grep -v "^Requirement already satisfied"
+              exec python3 /scripts/ship_logs.py
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: GCP_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: vector-gcp-credentials
+                  key: project-id
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /secrets/gcs-key.json
+          volumeMounts:
+            - name: script
+              mountPath: /scripts/
+              readOnly: true
+            - name: pod-logs
+              mountPath: /var/log/pods/
+              readOnly: true
+            - name: gcp-credentials
+              mountPath: /secrets/
+              readOnly: true
+            - name: shipper-data
+              mountPath: /tmp/shipper-data/
+          resources:
+            requests:
+              memory: "0"
+              cpu: "10m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+      volumes:
+        - name: script
+          configMap:
+            name: mc-log-shipper-cm
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods/
+            type: Directory
+        - name: gcp-credentials
+          secret:
+            secretName: vector-gcp-credentials
+            items:
+              - key: key.json
+                path: gcs-key.json
+        - name: shipper-data
+          emptyDir: {}

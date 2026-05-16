@@ -76,12 +76,20 @@ resource "google_pubsub_topic" "mc_raw_logs" {
   depends_on = [google_project_service.pubsub]
 }
 
-# Vector → mc-raw-logs の publish 権限
+# Vector → mc-raw-logs の publish 権限（SAキー作成禁止ポリシーに備えユーザーにも付与）
 resource "google_pubsub_topic_iam_member" "mc_raw_logs_publisher" {
   project = var.project_id
   topic   = google_pubsub_topic.mc_raw_logs.name
   role    = "roles/pubsub.publisher"
   member  = "serviceAccount:${google_service_account.mc_log_publisher_sa.email}"
+}
+
+# フォールバック: ユーザーADCでもpublish可能にする（SAキー作成不可の組織ポリシー対策）
+resource "google_pubsub_topic_iam_member" "mc_raw_logs_publisher_user" {
+  project = var.project_id
+  topic   = google_pubsub_topic.mc_raw_logs.name
+  role    = "roles/pubsub.publisher"
+  member  = "user:${var.terraform_executor_email}"
 }
 
 # Cloud Function → mc-raw-logs の subscriber 権限（Eventarc が自動管理するが明示的に付与）
