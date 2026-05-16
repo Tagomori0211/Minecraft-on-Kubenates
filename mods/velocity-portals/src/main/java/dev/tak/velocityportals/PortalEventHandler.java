@@ -4,6 +4,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -34,6 +35,18 @@ public class PortalEventHandler {
     public PortalEventHandler() {
         PortalConfig.init();
         LOGGER.info("[VelocityPortals] PortalEventHandler が初期化されました");
+    }
+
+    /**
+     * プレイヤーがサーバーに参加したときにクールダウンを設定する。
+     * Velocity 経由で別サーバーから戻ってきた際、ログイン座標がポータルゾーン内でも
+     * 即座に再転送されるループを防ぐ。
+     */
+    @SubscribeEvent
+    public void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        cooldowns.put(player.getUUID(), System.currentTimeMillis() + COOLDOWN_MS);
+        LOGGER.debug("[VelocityPortals] {} の参加クールダウンを設定しました", player.getName().getString());
     }
 
     /**
