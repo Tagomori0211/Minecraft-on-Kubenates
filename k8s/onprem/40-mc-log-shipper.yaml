@@ -42,10 +42,24 @@ data:
     PROJECT_ID = os.environ["GCP_PROJECT_ID"]
     TOPIC_NAME = "mc-raw-logs"
 
-    LOGIN_PAT = re.compile(r"^\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: (\w+) joined the game$")
-    LOGOUT_PAT = re.compile(r"^\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: (\w+) left the game$")
-    UUID_PAT = re.compile(
-        r"^\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: UUID of player (\w+) is ([0-9a-f\-]+)$"
+    # Java Edition パターン（stdout用、containerdラップ形式）
+    JAVA_LOGIN_PAT = re.compile(
+        r"\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: (\w+) joined the game"
+    )
+    JAVA_LOGOUT_PAT = re.compile(
+        r"\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: (\w+) left the game"
+    )
+    JAVA_UUID_PAT = re.compile(
+        r"\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: UUID of player (\w+) is ([0-9a-f\-]+)"
+    )
+
+    # Bedrock Edition パターン（stdout、containerdラップ形式）
+    # 実際の行: [YYYY-MM-DD HH:MM:SS:mmm INFO] Player connected: name, xuid: digits
+    BEDROCK_CONNECT_PAT = re.compile(
+        r"Player connected: (\w+), xuid: (\d+)"
+    )
+    BEDROCK_DISCONNECT_PAT = re.compile(
+        r"Player disconnected: (\w+), xuid: (\d+)"
     )
 
     # ── 状態 ────────────────────────────────────────────────
@@ -87,7 +101,7 @@ data:
         return "unknown"
 
 
-    def publish_event(server: str, message: str, event_type: str):
+    def publish_event(server: str, message: str, event_type: str, xuid: str = ""):
         """Pub/Sub mc-raw-logs にイベントを publish。"""
         payload = {
             "message": message,
@@ -95,6 +109,9 @@ data:
             "server": server,
             "event_timestamp": datetime.now(timezone.utc).isoformat(),
         }
+        # Bedrock はメッセージから直接 XUID が取得できるため添付
+        if xuid:
+            payload["xuid"] = xuid
         data = json.dumps(payload).encode()
         future = publisher.publish(topic_path, data)
         msg_id = future.result(timeout=10)
@@ -107,24 +124,41 @@ data:
         if not line:
             return
 
-        # UUID 行 → キャッシュ
-        m = UUID_PAT.match(line)
-        if m:
-            player_xuid[m.group(1)] = m.group(2).replace("-", "")
-            print(f"UUID_CACHED: {m.group(1)}")
-            return
+        if server == "bedrock":
+            # ── Bedrock: connect/disconnect から直接 XUID 抽出 ──
+            m = BEDROCK_CONNECT_PAT.search(line)
+            if m:
+                player_name = m.group(1)
+                xuid = m.group(2)
+                player_xuid[player_name] = xuid
+                publish_event(server, line, "login", xuid=xuid)
+                return
 
-        # ログイン行
-        m = LOGIN_PAT.match(line)
-        if m:
-            publish_event(server, line, "login")
-            return
+            m = BEDROCK_DISCONNECT_PAT.search(line)
+            if m:
+                player_name = m.group(1)
+                xuid = m.group(2)
+                publish_event(server, line, "logout", xuid=xuid)
+                return
+        else:
+            # ── Java: UUID 行をキャッシュし join/leave を検出 ──
+            m = JAVA_UUID_PAT.search(line)
+            if m:
+                player_xuid[m.group(1)] = m.group(2).replace("-", "")
+                print(f"UUID_CACHED: {m.group(1)}")
+                return
 
-        # ログアウト行
-        m = LOGOUT_PAT.match(line)
-        if m:
-            publish_event(server, line, "logout")
-            return
+            # ログイン行
+            m = JAVA_LOGIN_PAT.search(line)
+            if m:
+                publish_event(server, line, "login")
+                return
+
+            # ログアウト行
+            m = JAVA_LOGOUT_PAT.search(line)
+            if m:
+                publish_event(server, line, "logout")
+                return
 
 
     def save_cursors():
@@ -160,11 +194,10 @@ data:
                     except FileNotFoundError:
                         continue
 
-                    # 初回: 既存ファイルは末尾から開始
+                    # 初回: 既存ファイルは先頭から読み取り（過去イベントを捕捉）
                     if log_str not in cursors:
-                        cursors[log_str] = size
+                        cursors[log_str] = 0
                         scanned.add(log_str)
-                        continue
 
                     last_pos = cursors[log_str]
 

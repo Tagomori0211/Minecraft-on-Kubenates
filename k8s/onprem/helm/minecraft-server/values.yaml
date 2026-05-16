@@ -57,6 +57,9 @@ metrics:
   enabled: true
   port: 8080
 
+logShipper:
+  enabled: true
+
 velocity:
   enabled: false
   secretName: "velocity-secret"

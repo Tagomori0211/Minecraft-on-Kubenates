@@ -149,6 +149,46 @@ spec:
             requests: { memory: "32Mi", cpu: "10m" }
             limits: { memory: "64Mi", cpu: "100m" }
 {{- end }}
+{{- if .Values.logShipper.enabled }}
+        - name: log-shipper
+          image: python:3.12-slim
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              pip install --quiet google-cloud-pubsub 2>&1 | grep -v "^Requirement already satisfied"
+              exec python3 /scripts/ship_java_logs.py
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: GCP_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: vector-gcp-credentials
+                  key: project-id
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /secrets/gcs-key.json
+            - name: SERVER_NAME
+              value: "{{ .Values.server.name }}"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              readOnly: true
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+            - name: gcp-credentials
+              mountPath: /secrets
+              readOnly: true
+            - name: shipper-data
+              mountPath: /tmp/shipper-data
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+{{- end }}
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -157,4 +197,17 @@ spec:
         - name: cm-{{ .name }}
           configMap:
             name: {{ .name }}
+{{- end }}
+{{- if .Values.logShipper.enabled }}
+        - name: script
+          configMap:
+            name: java-log-shipper-cm
+        - name: gcp-credentials
+          secret:
+            secretName: vector-gcp-credentials
+            items:
+              - key: key.json
+                path: gcs-key.json
+        - name: shipper-data
+          emptyDir: {}
 {{- end }}

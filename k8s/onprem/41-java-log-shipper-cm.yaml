@@ -1,0 +1,158 @@
+# ============================================================
+# TAK Pipeline - Java Log Shipper Sidecar ConfigMap
+# ============================================================
+# Java Edition Pod の sidecar として動作し、コンテナ内
+# /data/logs/latest.log を tail してプレイヤーイベントを
+# Pub/Sub mc-raw-logs に publish する。
+#
+# 前提:
+#   - Secret vector-gcp-credentials が作成済みであること
+#   - minecraft Namespace にデプロイされていること
+# ============================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: java-log-shipper-cm
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: java-log-shipper
+    app.kubernetes.io/component: log-collector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+data:
+  ship_java_logs.py: |
+    """Java Edition ログシッパー: latest.log を tail し Pub/Sub に publish。"""
+    import base64
+    import json
+    import os
+    import re
+    import time
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from google.cloud import pubsub_v1
+
+    # ── 設定 ────────────────────────────────────────────────
+    LOG_FILE = Path("/data/logs/latest.log")
+    PROJECT_ID = os.environ["GCP_PROJECT_ID"]
+    TOPIC_NAME = "mc-raw-logs"
+    SERVER = os.environ.get("SERVER_NAME", "unknown")
+
+    # Java Edition ログフォーマット（latest.log 生形式）
+    # 例: [16May2026 15:28:45.076] [Server thread/INFO] [MinecraftServer/]: name joined the game
+    LOGIN_PAT = re.compile(
+        r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\] \[[^\]]*\]: (\w+) joined the game"
+    )
+    LOGOUT_PAT = re.compile(
+        r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\] \[[^\]]*\]: (\w+) left the game"
+    )
+    UUID_PAT = re.compile(
+        r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\] \[[^\]]*\]: UUID of player (\w+) is ([0-9a-f\-]+)"
+    )
+
+    # ── 状態 ────────────────────────────────────────────────
+    publisher = pubsub_v1.PublisherClient()
+    topic_path = publisher.topic_path(PROJECT_ID, TOPIC_NAME)
+    player_xuid: dict[str, str] = {}
+    cursor_file = Path("/tmp/shipper-data/cursor.json")
+    cursors: dict[str, int] = {}
+
+    if cursor_file.exists():
+        cursors = json.loads(cursor_file.read_text())
+
+
+    def publish_event(message: str, event_type: str, server: str = SERVER):
+        """Pub/Sub mc-raw-logs にイベントを publish。"""
+        payload = {
+            "message": message,
+            "event_type": event_type,
+            "server": server,
+            "event_timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        data = json.dumps(payload).encode()
+        future = publisher.publish(topic_path, data)
+        msg_id = future.result(timeout=10)
+        print(f"PUBLISHED: {msg_id} | {event_type} | {server}")
+
+
+    def process_line(line: str):
+        """1行のログを解析し、必要に応じて publish。"""
+        line = line.strip()
+        if not line:
+            return
+
+        # UUID 行 → キャッシュ
+        m = UUID_PAT.search(line)
+        if m:
+            player_xuid[m.group(1)] = m.group(2).replace("-", "")
+            print(f"UUID_CACHED: {m.group(1)}")
+            return
+
+        # ログイン行
+        m = LOGIN_PAT.search(line)
+        if m:
+            publish_event(line, "login")
+            return
+
+        # ログアウト行
+        m = LOGOUT_PAT.search(line)
+        if m:
+            publish_event(line, "logout")
+            return
+
+
+    def save_cursors():
+        """カーソルを永続化。"""
+        cursor_file.parent.mkdir(parents=True, exist_ok=True)
+        cursor_file.write_text(json.dumps(cursors))
+
+
+    def tail_log():
+        """latest.log を tail 監視。"""
+        log_str = str(LOG_FILE)
+
+        while True:
+            try:
+                if not LOG_FILE.exists():
+                    print(f"WAITING: {LOG_FILE} が存在しません")
+                    time.sleep(5)
+                    continue
+
+                size = LOG_FILE.stat().st_size
+
+                # 初回: 既存ファイルは先頭から読み取り（過去イベントを捕捉）
+                if log_str not in cursors:
+                    cursors[log_str] = 0
+
+                last_pos = cursors[log_str]
+
+                # ログローテーション検出（ファイルが縮んだ）
+                if size < last_pos:
+                    last_pos = 0
+
+                # 新しいデータがあれば読み取り
+                if size > last_pos:
+                    try:
+                        with open(LOG_FILE, "r") as f:
+                            f.seek(last_pos)
+                            for line in f:
+                                process_line(line)
+                        cursors[log_str] = size
+                        save_cursors()
+                    except (OSError, UnicodeDecodeError):
+                        pass
+
+                time.sleep(2)
+
+            except KeyboardInterrupt:
+                save_cursors()
+                break
+            except Exception as e:
+                print(f"ERROR: {e}")
+                time.sleep(5)
+
+
+    if __name__ == "__main__":
+        print(f"STARTING: log_file={LOG_FILE}, server={SERVER}, project={PROJECT_ID}")
+        tail_log()

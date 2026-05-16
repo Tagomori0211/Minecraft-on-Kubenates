@@ -23,14 +23,16 @@ from datetime import datetime, timezone
 # 正規表現パターン
 # ---------------------------------------------------------------------------
 
+# Java Edition: コンテナ内 /data/logs/latest.log の生フォーマット
+# 例: [16May2026 15:28:45.076] [Server thread/INFO] [net.minecraft.server.MinecraftServer/]: shinari20b joined the game
 LOGIN_PATTERN = re.compile(
-    r"^\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: (\w+) joined the game$"
+    r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\] \[[^\]]*\]: (\w+) joined the game"
 )
 LOGOUT_PATTERN = re.compile(
-    r"^\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: (\w+) left the game$"
+    r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\] \[[^\]]*\]: (\w+) left the game"
 )
 UUID_PATTERN = re.compile(
-    r"^\[\d{2}:\d{2}:\d{2}\] \[[^\]]*\]: UUID of player (\w+) is ([0-9a-f\-]+)$"
+    r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\] \[[^\]]*\]: UUID of player (\w+) is ([0-9a-f\-]+)"
 )
 
 # ---------------------------------------------------------------------------
@@ -149,47 +151,64 @@ def process_log_event(event: dict, context=None) -> tuple[str, int]:
 
     message = payload.get("message", "")
     server = payload.get("server", "unknown")
-    # event_timestamp は Vector 側で付与された ISO8601 文字列
     event_timestamp = payload.get("event_timestamp", datetime.now(timezone.utc).isoformat())
+    direct_xuid = payload.get("xuid", "")  # Bedrock はログシッパーが直接 XUID を添付
 
     if not message:
         print("WARNING: message フィールドなし、スキップ")
         return ("OK", 200)
 
-    # 2. ログ行をパース
     print(f"DEBUG: ログ行 [{server}] {message.strip()}")
 
-    uuid_match = UUID_PATTERN.match(message)
-    if uuid_match:
-        player_name = uuid_match.group(1)
-        xuid_with_hyphens = uuid_match.group(2)
-        xuid = xuid_with_hyphens.replace("-", "")
-        _player_xuid_map[player_name] = xuid
-        print(f"INFO: XUID マッピング登録: {player_name} → xuid({len(xuid)}桁)")
-        return ("OK", 200)
-
-    login_match = LOGIN_PATTERN.match(message)
-    if login_match:
-        player_name = login_match.group(1)
-        event_type = "login"
-    else:
-        logout_match = LOGOUT_PATTERN.match(message)
-        if logout_match:
-            player_name = logout_match.group(1)
+    # ── Bedrock モード: xuid が直接指定されている ──
+    if direct_xuid:
+        # 注意: "disconnected" は "connected" を含むため先に判定
+        if "disconnected" in message.lower() or "left" in message.lower():
             event_type = "logout"
+        elif "connected" in message.lower() or "joined" in message.lower():
+            event_type = "login"
         else:
-            print(f"DEBUG: ログインパターンにもログアウトパターンにも一致せずスキップ")
+            print(f"DEBUG: Bedrock イベントタイプ不明、スキップ")
             return ("OK", 200)
 
-    # 3. player_hash 計算
-    xuid = _player_xuid_map.get(player_name)
-    if xuid:
-        raw_input = xuid + _get_salt(project_id, salt_secret_name)
-        print(f"INFO: XUID ベースハッシュ: {player_name}")
+        player_name = "bedrock_player"  # Bedrock はプレイヤー名を使わず XUID でハッシュ
+        xuid = direct_xuid
+        print(f"INFO: Bedrock XUID 直接使用: {xuid}")
     else:
-        # XUID 未取得の場合はプレイヤー名でフォールバック（UUID 行が先に来ることが前提）
-        raw_input = player_name + _get_salt(project_id, salt_secret_name)
-        print(f"WARNING: XUID 未取得のため playername でハッシュ: {player_name}")
+        # ── Java モード: メッセージをパースして UUID→XUID を解決 ──
+        uuid_match = UUID_PATTERN.search(message)
+        if uuid_match:
+            player_name = uuid_match.group(1)
+            xuid_with_hyphens = uuid_match.group(2)
+            xuid = xuid_with_hyphens.replace("-", "")
+            _player_xuid_map[player_name] = xuid
+            print(f"INFO: XUID マッピング登録: {player_name} → xuid({len(xuid)}桁)")
+            return ("OK", 200)
+
+        login_match = LOGIN_PATTERN.search(message)
+        if login_match:
+            player_name = login_match.group(1)
+            event_type = "login"
+        else:
+            logout_match = LOGOUT_PATTERN.search(message)
+            if logout_match:
+                player_name = logout_match.group(1)
+                event_type = "logout"
+            else:
+                print(f"DEBUG: ログインパターンにもログアウトパターンにも一致せずスキップ")
+                return ("OK", 200)
+
+        # Java: プレイヤー名から XUID を解決
+        xuid = _player_xuid_map.get(player_name)
+        if xuid:
+            print(f"INFO: XUID ベースハッシュ: {player_name}")
+        else:
+            # XUID 未取得の場合はプレイヤー名でフォールバック
+            xuid = player_name
+            print(f"WARNING: XUID 未取得のため playername でハッシュ: {player_name}")
+
+    # 3. player_hash 計算
+    raw_input = xuid + _get_salt(project_id, salt_secret_name)
 
     player_hash = hashlib.sha256(raw_input.encode()).hexdigest()
 
@@ -205,3 +224,5 @@ def process_log_event(event: dict, context=None) -> tuple[str, int]:
 
     print(f"INFO: 処理完了: {event_type} {player_name} → {player_hash[:16]}...")
     return ("OK", 200)
+
+# v2.2: Bedrock "spawned" 誤検出修正（死亡リスポン時にloginと誤認する問題を修正）
