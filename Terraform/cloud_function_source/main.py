@@ -26,13 +26,13 @@ from datetime import datetime, timezone, timedelta
 # Java Edition: コンテナ内 /data/logs/latest.log の生フォーマット
 # 例: [16May2026 15:28:45.076] [Server thread/INFO] [net.minecraft.server.MinecraftServer/]: shinari20b joined the game
 LOGIN_PATTERN = re.compile(
-    r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\] \[[^\]]*\]: (\w+) joined the game"
+    r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\].* (\w+) joined the game"
 )
 LOGOUT_PATTERN = re.compile(
-    r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\] \[[^\]]*\]: (\w+) left the game"
+    r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\].* (\w+) left the game"
 )
 UUID_PATTERN = re.compile(
-    r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\] \[[^\]]*\]: UUID of player (\w+) is ([0-9a-f\-]+)"
+    r"\[\d{1,2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\.\d{3}\].* UUID of player (\w+) is ([0-9a-f\-]+)"
 )
 
 # ---------------------------------------------------------------------------
@@ -227,4 +227,4 @@ def process_log_event(event: dict, context=None) -> tuple[str, int]:
     print(f"INFO: 処理完了: {event_type} {player_name} → {player_hash[:16]}...")
     return ("OK", 200)
 
-# v2.2: Bedrock "spawned" 誤検出修正（死亡リスポン時にloginと誤認する問題を修正）
+# v2.3: Javaログ正規表現を修正（[thread/LEVEL] [className/] の2ブロック対応）
