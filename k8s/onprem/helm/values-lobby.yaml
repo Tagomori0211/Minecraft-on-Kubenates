@@ -99,6 +99,8 @@ server:
       value: "alpha"
     - name: MODS
       value: "https://www.curseforge.com/api/v1/mods/227639/files/7797302/download"
+    - name: LEVEL_TYPE
+      value: "FLAT"
 
 network:
   nodePort: 30067
