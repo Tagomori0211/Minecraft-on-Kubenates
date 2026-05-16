@@ -268,3 +268,5 @@ ModList/
 
 # PlayersSync ConfigMap（DB パスワードを含むため管理外）
 k8s/onprem/playersync-configmaps.yaml
+# DeepSeekCode（機密情報を含むため管理外）
+DeepSeekCode.sh
