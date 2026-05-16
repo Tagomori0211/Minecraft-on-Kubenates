@@ -1,0 +1,227 @@
+# ============================================================
+# TAK Pipeline - Vector DaemonSet (ログ収集・GCP Pub/Sub 転送)
+# ============================================================
+# Minecraft Pod の stdout ログを収集し、ログイン/ログアウト行を
+# フィルタして GCP Pub/Sub mc-raw-logs に publish する。
+#
+# 前提:
+#   - Secret vector-gcp-credentials が手動で作成済みであること
+#     (terraform apply 後の output に表示されるコマンドを実行)
+#     例:
+#       ssh k3s-worker "kubectl create secret generic vector-gcp-credentials \
+#         -n minecraft \
+#         --from-file=key.json=./vector-key.json \
+#         --from-literal=project-id=<PROJECT_ID>"
+#   - minecraft Namespace に Minecraft Pod が稼働していること
+#
+# コンポーネント:
+#   1. ServiceAccount (vector-sa)
+#   2. Role (vector-role): minecraft ns 内の Pod get/list/watch
+#   3. RoleBinding (vector-rolebinding)
+#   4. ConfigMap (vector-cm): Vector TOML 設定
+#   5. DaemonSet (vector): 全ノードでログ収集
+# ============================================================
+
+---
+# ── ServiceAccount ──────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vector-sa
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: log-collector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+
+---
+# ── Role ────────────────────────────────────────────────────
+# kubernetes_logs source が Pod のメタデータを取得するために必要
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vector-role
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: log-collector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ── RoleBinding ─────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vector-rolebinding
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: log-collector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vector-role
+subjects:
+  - kind: ServiceAccount
+    name: vector-sa
+    namespace: minecraft
+
+---
+# ── ConfigMap: Vector 設定 ─────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-cm
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: log-collector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+data:
+  vector.toml: |
+    # ── データディレクトリ ──────────────────────────────
+    data_dir = "/tmp/vector-data"
+
+    # ── ログソース: Kubernetes コンテナログ ─────────────
+    [sources.kubernetes_logs]
+    type = "kubernetes_logs"
+    auto_partial_merge = true
+    namespaces = ["minecraft"]
+
+    # ── フィルタ: ログイン/ログアウト/UUID 行のみ抽出 ──
+    [transforms.filter_mc_events]
+    type = "filter"
+    inputs = ["kubernetes_logs"]
+    condition = '''
+      match(.message, r'joined the game$') ||
+      match(.message, r'left the game$') ||
+      match(.message, r'UUID of player')
+    '''
+
+    # ── メタデータ整理: server ラベル付与、不要フィールド削除 ──
+    [transforms.prepare_event]
+    type = "remap"
+    inputs = ["filter_mc_events"]
+    source = '''
+      # Pod ラベルからサーバー識別子を抽出
+      .server = get!(."kubernetes".pod_labels."app.kubernetes.io/component") ?? "unknown"
+
+      # イベントタイムスタンプ（Vector がログ行を読み取った時刻）
+      .event_timestamp = format_timestamp!(now(), "%FT%T%.fZ")
+
+      # 下流で不要な kubernetes メタデータを削除
+      del(.kubernetes)
+      del(.file)
+      del(.source_type)
+    '''
+
+    # ── 出力: GCP Pub/Sub mc-raw-logs ────────────────────
+    [sinks.gcp_pubsub]
+    type = "gcp_pubsub"
+    inputs = ["prepare_event"]
+    project_id = "${GCP_PROJECT_ID}"
+    topic = "mc-raw-logs"
+    encoding.codec = "json"
+    credentials_path = "/secrets/gcs-key.json"
+
+    # バッファ: ディスクバッファで一時的な送信失敗に耐える
+    [sinks.gcp_pubsub.buffer]
+    type = "disk"
+    max_size = 104857600  # 100MB
+    when_full = "block"
+
+---
+# ── DaemonSet ──────────────────────────────────────────────
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vector
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: log-collector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vector
+        app.kubernetes.io/component: log-collector
+    spec:
+      serviceAccountName: vector-sa
+
+      containers:
+        - name: vector
+          image: timberio/vector:0.42.0-alpine
+          args:
+            - "--config"
+            - "/etc/vector/vector.toml"
+          env:
+            - name: GCP_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: vector-gcp-credentials
+                  key: project-id
+            - name: VECTOR_LOG
+              value: "info"
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /secrets/gcs-key.json
+          volumeMounts:
+            - name: vector-config
+              mountPath: /etc/vector/
+              readOnly: true
+            - name: pod-logs
+              mountPath: /var/log/pods/
+              readOnly: true
+            - name: gcp-credentials
+              mountPath: /secrets/
+              readOnly: true
+            - name: vector-data
+              mountPath: /tmp/vector-data/
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          readinessProbe:
+            exec:
+              command: ["vector", "topology"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          livenessProbe:
+            exec:
+              command: ["vector", "topology"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+
+      volumes:
+        - name: vector-config
+          configMap:
+            name: vector-cm
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods/
+            type: Directory
+        - name: gcp-credentials
+          secret:
+            secretName: vector-gcp-credentials
+            items:
+              - key: key.json
+                path: gcs-key.json
+        - name: vector-data
+          emptyDir: {}

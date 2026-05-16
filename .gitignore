@@ -270,3 +270,9 @@ ModList/
 k8s/onprem/playersync-configmaps.yaml
 # DeepSeekCode（機密情報を含むため管理外）
 DeepSeekCode.sh
+
+# Terraform Cloud Function ビルドアーティファクト
+Terraform/cloud_function_source/mc-log-processor.zip
+
+# Terraform ローカルプラグイン
+Terraform/.terraform/

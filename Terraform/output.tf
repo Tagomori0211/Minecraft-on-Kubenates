@@ -37,3 +37,50 @@ output "cost_estimation_info" {
     estimated_note = "GKE → GCE 移行完了（2026-05-03）。月額 ¥19,700 → ¥3,680 に削減（81%減）。"
   }
 }
+
+# ============================================================
+# ログパイプライン Outputs
+# ============================================================
+
+output "mc_log_pipeline_pubsub_topics" {
+  description = "Pub/Sub topic names for the log pipeline"
+  value = {
+    raw_logs     = google_pubsub_topic.mc_raw_logs.name
+    clean_events = google_pubsub_topic.mc_clean_events.name
+  }
+}
+
+output "mc_log_publisher_sa_key_setup" {
+  description = "Vector SA キーを作成し k8s Secret に保存する手順"
+  value       = <<-EOT
+    # mc-log-publisher-sa のキーを作成:
+    gcloud iam service-accounts keys create vector-key.json \
+      --iam-account=mc-log-publisher-sa@${var.project_id}.iam.gserviceaccount.com \
+      --project=${var.project_id}
+
+    # k3s ノードにキーを転送:
+    scp vector-key.json k3s-worker:~/
+
+    # k3s ノードで Secret を作成（kubectl は実機で実行する必要あり）:
+    ssh k3s-worker "kubectl create secret generic vector-gcp-credentials \
+      -n minecraft \
+      --from-file=key.json=./vector-key.json \
+      --from-literal=project-id=${var.project_id}"
+
+    # Vector DaemonSet をデプロイ:
+    ssh k3s-worker "kubectl apply -f ~/k8s_manifests/40-vector-daemonset.yaml"
+
+    # 動作確認:
+    ssh k3s-worker "kubectl logs -n minecraft -l app.kubernetes.io/name=vector --tail=20"
+  EOT
+}
+
+output "mc_player_activities_table" {
+  description = "BigQuery player_activities テーブル ID"
+  value       = google_bigquery_table.player_activities.table_id
+}
+
+output "mc_log_processor_function_name" {
+  description = "Cloud Function (Gen2) 名"
+  value       = google_cloudfunctions2_function.mc_log_processor.name
+}

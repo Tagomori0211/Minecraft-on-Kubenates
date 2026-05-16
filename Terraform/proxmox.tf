@@ -17,7 +17,7 @@ resource "proxmox_vm_qemu" "mc_server_vms" {
     cores   = each.value.cores
     sockets = 1
   }
-  memory  = each.value.memory
+  memory = each.value.memory
 
   # ★ SCSIコントローラ
   scsihw = "virtio-scsi-pci"
@@ -83,7 +83,7 @@ resource "proxmox_vm_qemu" "s3_vms" {
     cores   = each.value.cores
     sockets = 1
   }
-  memory  = each.value.memory
+  memory = each.value.memory
 
   scsihw = "virtio-scsi-pci"
 

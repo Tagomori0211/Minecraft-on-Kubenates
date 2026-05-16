@@ -40,16 +40,16 @@ resource "google_bigquery_table" "server_metrics" {
   table_id   = "server_metrics"
 
   schema = jsonencode([
-    { name = "timestamp",   type = "TIMESTAMP", mode = "REQUIRED",
-      description = "メトリクス収集時刻 (UTC)" },
-    { name = "player_hash", type = "STRING",    mode = "NULLABLE",
-      description = "SHA256(XUID + salt) — 将来のプレイヤー粒度メトリクス用。現在は NULL。" },
-    { name = "server",      type = "STRING",    mode = "REQUIRED",
-      description = "サーバー識別子 (lobby / survival / mod / bedrock)" },
-    { name = "metric_name", type = "STRING",    mode = "REQUIRED",
-      description = "recording rule 名 (例: mc:players_online:avg15m)" },
-    { name = "value",       type = "FLOAT64",   mode = "REQUIRED",
-      description = "集計値" },
+    { name = "timestamp", type = "TIMESTAMP", mode = "REQUIRED",
+    description = "メトリクス収集時刻 (UTC)" },
+    { name = "player_hash", type = "STRING", mode = "NULLABLE",
+    description = "SHA256(XUID + salt) — 将来のプレイヤー粒度メトリクス用。現在は NULL。" },
+    { name = "server", type = "STRING", mode = "REQUIRED",
+    description = "サーバー識別子 (lobby / survival / mod / bedrock)" },
+    { name = "metric_name", type = "STRING", mode = "REQUIRED",
+    description = "recording rule 名 (例: mc:players_online:avg15m)" },
+    { name = "value", type = "FLOAT64", mode = "REQUIRED",
+    description = "集計値" },
   ])
 
   # 日次パーティション: クエリコスト削減
