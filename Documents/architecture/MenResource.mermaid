@@ -18,14 +18,15 @@
     'pieStrokeWidth': '1px'
   }
 }}%%
-pie title k3s-worker VM 内訳（64GB）
-    "Java-Industry MOD (30Gi)" : 30
-    "Java-Survival (16Gi)" : 16
-    "Bedrock Server (8Gi)" : 8
-    "kube-system (~1.5Gi)" : 1.5
-    "Kotlin API (1Gi)" : 1
-    "Tailscale sidecar (256Mi)" : 0.25
-    "Flutter Web (256Mi)" : 0.25
-    "Envoy (256Mi)" : 0.25
-    "CF Tunnel (128Mi)" : 0.125
-    "残バッファ (~0.6Gi)" : 0.625
+pie title k3s-worker ノード メモリ割り当て (56Gi)
+    "Java-Industry MOD (24Gi Request)" : 24
+    "Java-Survival (14Gi Request)" : 14
+    "Java-Lobby (8Gi Request)" : 8
+    "Bedrock Server (4Gi Request)" : 4
+    "MariaDB (512Mi)" : 0.5
+    "kube-system/coredns/metrics (~140Mi)" : 0.14
+    "vmagent (128Mi)" : 0.125
+    "mc-log-shipper DaemonSet (limit 256Mi)" : 0.25
+    "log-shipper sidecars ×3 (96Mi)" : 0.1
+    "mc-monitor sidecars ×3 (96Mi)" : 0.1
+    "残バッファ (~4.8Gi)" : 4.785

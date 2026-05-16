@@ -28,7 +28,7 @@ data:
     import os
     import re
     import time
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone, timedelta
     from pathlib import Path
 
     from google.cloud import pubsub_v1
@@ -38,6 +38,7 @@ data:
     PROJECT_ID = os.environ["GCP_PROJECT_ID"]
     TOPIC_NAME = "mc-raw-logs"
     SERVER = os.environ.get("SERVER_NAME", "unknown")
+    JST = timezone(timedelta(hours=9))  # 日本標準時
 
     # Java Edition ログフォーマット（latest.log 生形式）
     # 例: [16May2026 15:28:45.076] [Server thread/INFO] [MinecraftServer/]: name joined the game
@@ -68,7 +69,7 @@ data:
             "message": message,
             "event_type": event_type,
             "server": server,
-            "event_timestamp": datetime.now(timezone.utc).isoformat(),
+            "event_timestamp": datetime.now(JST).isoformat(),
         }
         data = json.dumps(payload).encode()
         future = publisher.publish(topic_path, data)

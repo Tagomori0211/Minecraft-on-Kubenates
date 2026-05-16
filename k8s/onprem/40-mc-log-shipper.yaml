@@ -32,7 +32,7 @@ data:
     import os
     import re
     import time
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone, timedelta
     from pathlib import Path
 
     from google.cloud import pubsub_v1
@@ -41,6 +41,7 @@ data:
     LOG_DIR = Path("/var/log/pods")
     PROJECT_ID = os.environ["GCP_PROJECT_ID"]
     TOPIC_NAME = "mc-raw-logs"
+    JST = timezone(timedelta(hours=9))  # 日本標準時
 
     # Java Edition パターン（stdout用、containerdラップ形式）
     JAVA_LOGIN_PAT = re.compile(
@@ -107,7 +108,7 @@ data:
             "message": message,
             "event_type": event_type,
             "server": server,
-            "event_timestamp": datetime.now(timezone.utc).isoformat(),
+            "event_timestamp": datetime.now(JST).isoformat(),
         }
         # Bedrock はメッセージから直接 XUID が取得できるため添付
         if xuid:

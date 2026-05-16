@@ -17,7 +17,7 @@ import os
 import re
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # ---------------------------------------------------------------------------
 # 正規表現パターン
@@ -137,6 +137,8 @@ def process_log_event(event: dict, context=None) -> tuple[str, int]:
     project_id = os.environ.get("PROJECT_ID", "")
     salt_secret_name = os.environ.get("HASH_SALT_SECRET_NAME", "")
 
+    JST = timezone(timedelta(hours=9))  # 日本標準時
+
     # 1. Pub/Sub メッセージをデコード
     raw_data = event.get("data", "")
     if not raw_data:
@@ -151,7 +153,7 @@ def process_log_event(event: dict, context=None) -> tuple[str, int]:
 
     message = payload.get("message", "")
     server = payload.get("server", "unknown")
-    event_timestamp = payload.get("event_timestamp", datetime.now(timezone.utc).isoformat())
+    event_timestamp = payload.get("event_timestamp", datetime.now(JST).isoformat())
     direct_xuid = payload.get("xuid", "")  # Bedrock はログシッパーが直接 XUID を添付
 
     if not message:
