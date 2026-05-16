@@ -234,6 +234,18 @@ resource "google_cloudfunctions2_function_iam_member" "mc_log_processor_invoker"
   member         = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
+# Gen2 関数の実体である Cloud Run サービスに run.invoker を付与
+# Pub/Sub push サブスクリプションの OIDC トークン（compute デフォルト SA）が
+# Cloud Run に認証するために必要。
+# ※ cloudfunctions.invoker だけでは Gen2 の Cloud Run レイヤーに反映されないため追加。
+resource "google_cloud_run_service_iam_member" "mc_log_processor_run_invoker" {
+  project  = var.project_id
+  location = var.region
+  service  = google_cloudfunctions2_function.mc_log_processor.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
 # ============================================================
 # BigQuery: player_activities テーブル（既存 minecraft_monitoring データセットに追加）
 # ============================================================

@@ -126,18 +126,17 @@ def _publish_clean_event(
 # ---------------------------------------------------------------------------
 
 
-def process_log_event(cloud_event: dict) -> tuple[str, int]:
-    """Pub/Sub トリガーで呼び出されるメイン関数。
+def process_log_event(event: dict, context=None) -> tuple[str, int]:
+    """Pub/Sub トリガーで呼び出されるメイン関数（Gen2 background function シグネチャ）。
 
-    cloud_event.data["message"]["data"] に base64 エンコードされた
-    ログイベント JSON が格納されている。
+    event["data"] に base64 エンコードされたログイベント JSON が格納されている。
+    context は Eventarc から渡されるメタデータ（使用しない）。
     """
     project_id = os.environ.get("PROJECT_ID", "")
     salt_secret_name = os.environ.get("HASH_SALT_SECRET_NAME", "")
 
     # 1. Pub/Sub メッセージをデコード
-    pubsub_message = cloud_event.get("data", {}).get("message", {})
-    raw_data = pubsub_message.get("data", "")
+    raw_data = event.get("data", "")
     if not raw_data:
         print("WARNING: 空メッセージ、スキップ")
         return ("OK", 200)
