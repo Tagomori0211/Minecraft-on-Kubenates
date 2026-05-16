@@ -52,10 +52,12 @@ provider "google-beta" {
 }
 
 # billingbudgets.googleapis.com は ADC の quota project 明示が必要なため専用エイリアスを使用
+# billing_project: ADC ユーザー認証情報で quota project を強制する
 provider "google-beta" {
   alias                 = "billing"
   project               = var.project_id
   region                = var.region
+  billing_project       = var.project_id
   user_project_override = true
 }
 
