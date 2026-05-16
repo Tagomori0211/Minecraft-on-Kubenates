@@ -288,6 +288,7 @@ resource "google_pubsub_subscription" "mc_clean_events_bq" {
 
   bigquery_config {
     table               = "${var.project_id}.${google_bigquery_dataset.minecraft_monitoring.dataset_id}.${google_bigquery_table.player_activities.table_id}"
+    use_table_schema    = true
     write_metadata      = false
     drop_unknown_fields = true
   }
