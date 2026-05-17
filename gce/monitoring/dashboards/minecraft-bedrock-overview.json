@@ -571,7 +571,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * (1 - (node_memory_MemAvailable_bytes{node=\"k3s-worker\"} / node_memory_MemTotal_bytes{node=\"k3s-worker\"}))",
+          "expr": "100 * (sum(container_memory_working_set_bytes{kubernetes_io_hostname=\"k3s-worker\"}) / machine_memory_bytes{kubernetes_io_hostname=\"k3s-worker\"})",
           "instant": true
         }
       ],
@@ -610,7 +610,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * (1 - avg by (node) (rate(node_cpu_seconds_total{mode=\"idle\",node=\"k3s-worker\"}[5m])))",
+          "expr": "100 * sum(rate(container_cpu_usage_seconds_total{kubernetes_io_hostname=\"k3s-worker\", container!=\"\"}[5m])) / machine_cpu_cores{kubernetes_io_hostname=\"k3s-worker\"}",
           "instant": true
         }
       ],
@@ -649,7 +649,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "node_memory_MemAvailable_bytes{node=\"k3s-worker\"}",
+          "expr": "machine_memory_bytes{kubernetes_io_hostname=\"k3s-worker\"} - sum(container_memory_working_set_bytes{kubernetes_io_hostname=\"k3s-worker\"})",
           "instant": true
         }
       ],
@@ -688,6 +688,6 @@
   "timezone": "browser",
   "title": "Minecraft Bedrock - BDS サーバーステータス",
   "uid": "minecraft-bedrock-overview",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

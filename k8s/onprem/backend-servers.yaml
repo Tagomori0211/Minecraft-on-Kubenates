@@ -136,7 +136,7 @@ spec:
           image: itzg/mc-monitor:latest
           args: ["export-for-prometheus"]
           env:
-            - { name: EXPORT_BEDROCK_SERVERS, value: "localhost:19132" }
+            - { name: EXPORT_BEDROCK_SERVERS, value: "127.0.0.1:19132" }
             - { name: DEBUG, value: "false" }
           ports:
             - containerPort: 8080
