@@ -4,7 +4,7 @@ server:
   version: "1.21.1"
   neoforgeVersion: "21.1.228"
   memory: "30G"
-  memoryRequest: "30Gi"
+  memoryRequest: "29Gi"
   memoryLimit: "30Gi"
   cpuRequest: "4000m"
   cpuLimit: "4000m"
@@ -69,6 +69,8 @@ server:
       mountPath: "/data/config/playersync-common.toml"
       subPath: "playersync-common.toml"
   extraEnv:
+    - name: LEVEL_SEED
+      value: "5569647651669561445"
     - name: MODRINTH_ALLOWED_VERSION_TYPE
       value: "alpha"
     - name: MODRINTH_DOWNLOAD_DEPENDENCIES
