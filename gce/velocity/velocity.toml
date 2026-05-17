@@ -1,7 +1,7 @@
 bind = "127.0.0.1:25577"
 
 motd = "すしすきーマイクラサーバー"
-show-max-players = 100
+show-max-players = 20
 
 # Mojang認証（オンラインモード）
 online-mode = true

@@ -25,7 +25,7 @@ server:
   difficulty: "peaceful"
   gamemode: "adventure"
   spawnProtection: "0"
-  maxPlayers: "100"
+  maxPlayers: "20"
   port: 25566
   mods:
     - "neoforged-velocity-support"
@@ -87,6 +87,8 @@ server:
       mountPath: "/data/config/playersync-common.toml"
       subPath: "playersync-common.toml"
   extraEnv:
+    - name: MAX_PLAYERS
+      value: "20"
     - name: MODRINTH_ALLOWED_VERSION_TYPE
       value: "alpha"
     - name: MODRINTH_DOWNLOAD_DEPENDENCIES
