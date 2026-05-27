@@ -31,11 +31,12 @@
 
 - [x] **Lobby 廃止**: deploy-lobby / svc-lobby / pvc-lobby 削除済み
 
-- [x] **Velocity 廃止 → socat TCP 透過転送に置換（ローカルファイル）**:
+- [x] **Velocity 廃止 → socat TCP 透過転送に置換**:
   - ✅ `gce/compose.yaml`: velocity + nginx-stream 削除、socat-tcp 追加
   - ✅ `gce/velocity/velocity.toml`, `forwarding.secret.example` 削除
   - ✅ `gce/nginx/nginx.conf` 削除
-  - ⚠️ GCE SSH での `docker compose up -d` 再起動は未実施（後続タスク）
+  - ✅ mc-proxy-1 上で `docker compose up -d` 実行、socat-tcp + socat-bedrock のみ稼働中
+  - ✅ nginx-stream / velocity コンテナを手動停止・削除
 
 - [x] **MariaDB 廃止**: 
   - ✅ `k8s/onprem/helm/values-mariadb.yaml` 削除
