@@ -1,5 +1,5 @@
 {
-  "type": "sushi:industry",
+  "type": "minecraft:overworld",
   "generator": {
     "type": "minecraft:noise",
     "settings": "sushi:industry",
