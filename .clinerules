@@ -138,3 +138,46 @@ labels:
 - **model は必ず `haiku` を指定**
 - プロンプトにプロジェクトルールを明記（日本語出力・SSH経由kubectl・pod再起動手順）
 - 詳細は `.claude/skills/haiku-subagent/SKILL.md` を参照
+
+---
+
+## 🔒 シェルコマンド安全実行ルール（2026-05-27 追加）
+
+### プロジェクト全体 grep / find の制限
+
+- **`search_files` ツール（Rust regex、`.git` 自動除外）を最優先で使用する**
+- シェル `grep -rl` をプロジェクトルートで実行する場合は **必ず `--exclude-dir=.git` を付与**:
+  ```bash
+  # ✅ 正しい
+  grep -rl "pattern" . --include="*.yaml" --exclude-dir=.git
+
+  # ❌ 禁止（.git/objects をスキャンし長時間応答不能になる）
+  grep -rl "pattern" . --include="*.yaml"
+  ```
+- パイプチェーン（`grep ... | grep -v ...`）は前段が完了するまで出力されないため、**長時間かかるグロブ検索では使用禁止**
+- 複数条件の grep は `--exclude-dir=.git` + 単一コマンドで完結させる
+
+### 長時間コマンドの事前評価
+
+- `find /` や `grep -r /` など、スキャン範囲が広大なコマンドは実行前に所要時間を見積もる
+- 不確実な場合は `search_files` ツールに置き換える
+- `apt install` / `pip install` などシステム変更を伴うコマンドは `requires_approval: true`
+
+### ファイル検索の優先順位
+
+1. **`search_files` ツール** — Rust regex、高速、`.git` 自動除外
+2. **`list_files` ツール** — ディレクトリ構造確認
+3. **シェル `find` / `grep`** — 上記で不十分な場合のみ。`--exclude-dir=.git` 必須
+
+### 参照
+
+- 詳細は `.agents/workflows/cli-safety.md` を参照
+
+---
+
+## 🗂️ `documents/` ディレクトリの凡例
+
+- `architecture/` — アーキテクチャ図（Mermaid / SVG）
+- `OperationPostmortem/` — インシデントポストモーテム（障害記録）
+- `README/` — 技術ドキュメント・ガイド
+- 新規ドキュメント追加時は適切なサブディレクトリに配置すること
