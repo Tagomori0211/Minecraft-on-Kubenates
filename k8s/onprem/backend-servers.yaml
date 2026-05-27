@@ -3,16 +3,15 @@
 # ============================================================
 # オンプレ MinecraftServer ノードに展開するリソース
 #
-# コンポーネント (infrastructure.mermaid):
-#   Java-Survival      : Paper Survival (4GB)
-#   Java-Indicatory MOD: NeoForge MOD (8GB)
-#   Bedrock Server     : Bedrock Edition (2GB)
-#   Tailscale Client   : Subnet Router (GKE ↔ オンプレ VPN)
+# コンポーネント:
+#   Survival 統合サーバー (Helm Chart 管理 / values-survival.yaml)
+#   Bedrock Server        : Bedrock Edition (4-8Gi)
+#   Tailscale Client      : Subnet Router (GCE ↔ オンプレ VPN)
 #
 # 接続フロー:
-#   Velocity(GKE) → Tailscale → svc-survival / svc-mod
-#   Nginx(さくらVPS) → Tailscale → svc-bedrock
-#   Prometheus(GKE) → Tailscale → mc-monitor(:8080) 各Pod
+#   Java    : GCE socat-tcp(:25565) → Tailscale → svc-survival:30065
+#   Bedrock : GCE socat-bedrock(:19132) → Tailscale → svc-bedrock:19132
+#   Prometheus → Tailscale → mc-monitor(:8080) 各Pod
 # ============================================================
 
 # ── Namespace ────────────────────────────────────────────────

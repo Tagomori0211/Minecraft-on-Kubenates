@@ -1,57 +1,24 @@
 # ============================================================
 # TAK Pipeline - Minecraft Proxy on GCE (Docker Compose)
 # ============================================================
-# ホストネットワークで velocity と nginx-stream を同居
+# ホストネットワークで socat TCP/UDP 透過転送
 # Tailscale はホスト側 systemd で kernel mode 動作
 #
 # 接続フロー:
-#   Java    : 35.200.78.252:25565/TCP -> nginx -> 127.0.0.1:25577 (velocity)
-#                                                     -> 100.107.122.45:30065-30067 (Tailscale)
-#   Bedrock : 35.200.78.252:19132/UDP -> nginx -> 100.107.122.45:19132 (Tailscale)
+#   Java    : 35.200.78.252:25565/TCP --> socat-tcp  --> 100.107.122.45:30065 (Tailscale -> k3s survival)
+#   Bedrock : 35.200.78.252:19132/UDP --> socat-bedrock --> 100.107.122.45:19132 (Tailscale -> k3s bedrock)
 # ============================================================
 
 services:
-  velocity:
-    image: itzg/bungeecord:latest
-    container_name: velocity
+  # Java Edition TCP 透過転送 (socat)
+  socat-tcp:
+    image: alpine/socat:latest
+    container_name: socat-tcp
     restart: unless-stopped
     network_mode: host
-    environment:
-      TYPE: VELOCITY
-      VELOCITY_VERSION: 3.4.0-SNAPSHOT
-      VERSION: 1.21.1
-      TZ: Asia/Tokyo
-      MEMORY: 512M
-      INIT_MEMORY: 512M
-      MAX_MEMORY: 512M
-      JVM_XX_OPTS: >-
-        -XX:+UseG1GC
-        -XX:G1HeapRegionSize=4M
-        -XX:+UnlockExperimentalVMOptions
-        -XX:+ParallelRefProcEnabled
-        -XX:+AlwaysPreTouch
-    volumes:
-      # 永続化: /server 配下（plugin / log）
-      - velocity-data:/server
-      # itzg/bungeecord の init が chown を実行するため rw が必要
-      - ./velocity/velocity.toml:/server/velocity.toml
-      - ./velocity/forwarding.secret:/server/forwarding.secret
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 25577 || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
-
-  nginx-stream:
-    image: nginx:alpine
-    container_name: nginx-stream
-    restart: unless-stopped
-    network_mode: host
-    depends_on:
-      - velocity
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    command:
+      - "TCP4-LISTEN:25565,fork,reuseaddr"
+      - "TCP4:100.107.122.45:30065"
 
   # Bedrock RakNet は nginx UDP proxy では動作しないため socat で透過中継
   # fork オプションでクライアントごとに独立ソケットを生成し RakNet セッションを正しく維持
@@ -63,7 +30,3 @@ services:
     command:
       - "UDP4-LISTEN:19132,fork,reuseaddr"
       - "UDP4:100.107.122.45:19132"
-
-volumes:
-  velocity-data:
-    name: velocity-data

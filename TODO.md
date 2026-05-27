@@ -21,29 +21,37 @@
   - ✅ 既に `gce/compose.yaml` で Bedrock UDP 転送に `alpine/socat:latest` が稼働中
   - ✅ **結論: socat に一本化**。nginx も廃止し、TCP+UDP ともに socat で転送
 
-- [ ] **Helm values 統合**: `values-survival.yaml` と `values-industry.yaml` を統合し、単一の values ファイルを作成
-  - MOD セットの重複排除・マージ
-  - メモリ: 30GB 程度に統合（Survival 16GB + Industry 30GB の合算を考慮しつつ最適化）
-  - NodePort を単一に統一
-  - `LEVEL_SEED` を削除（ランダムシードで新規ワールド生成）
-  - `onlineMode: "FALSE"` を維持（Velocity の `online-mode = true` がなくなるため）
+- [x] **Helm values 統合**: `values-survival.yaml` と `values-industry.yaml` を統合し、単一の values ファイルを作成
+  - MOD セットの重複排除・マージ（86 MOD）
+  - メモリ: 30GB に統合（Requests 29Gi / Limits 30Gi）
+  - NodePort: 25565:30065 / 8080:31611 に統一
+  - `LEVEL_SEED` 削除（ランダムシードで新規ワールド生成済み）
+  - `onlineMode: "FALSE"` 維持
+  - **Helm upgrade --install 成功（REVISION: 12）、Pod 3/3 Running、Done (8.815s) 確認済み**
+
+- [x] **Lobby 廃止**: deploy-lobby / svc-lobby / pvc-lobby 削除済み
+
+- [x] **Velocity 廃止 → socat TCP 透過転送に置換（ローカルファイル）**:
+  - ✅ `gce/compose.yaml`: velocity + nginx-stream 削除、socat-tcp 追加
+  - ✅ `gce/velocity/velocity.toml`, `forwarding.secret.example` 削除
+  - ✅ `gce/nginx/nginx.conf` 削除
+  - ⚠️ GCE SSH での `docker compose up -d` 再起動は未実施（後続タスク）
+
+- [x] **MariaDB 廃止**: 
+  - ✅ `k8s/onprem/helm/values-mariadb.yaml` 削除
+  - ✅ `k8s/onprem/mariadb-auth-secret.yaml.example` 削除
+  - ✅ k3s 上の `minecraft-data` namespace / MariaDB Helm リリースは既に存在せず（確認済み）
+
+- [x] **playersync 設定削除**: 
+  - ✅ `k8s/onprem/playersync-configmaps.yaml.example` 削除
+  - ✅ `values-survival.yaml` の playersync 関連 env/volume 参照は既に削除済み（コメントに明記）
+
+- [ ] **k8s マニフェスト整理**: 
+  - `k8s/onprem/backend-servers.yaml` のコメント・構造を更新（Lobby/Industry/Velocity の記述削除、survival 一本化に合わせる）
+  - `k8s/onprem/helm/values-lobby.yaml`, `values-industry.yaml` は既に削除済み ✅
 
 - [ ] **ディメンション分割の設計**: 工業ワールド用のカスタムディメンション設定を追加
   - 工業エリアへのポータル移動手段の選定（waystones / 専用ポータル MOD / カスタムディメンション MOD など）
-
-- [ ] **Velocity 廃止**:
-  - `gce/velocity/velocity.toml` を含む Velocity 関連の全設定を削除
-  - `gce/systemd/mc-proxy.service` の停止・削除
-  - `gce/compose.yaml` の velocity サービス + nginx-stream サービスを削除
-  - socat TCP サービス（`TCP4-LISTEN:25565,fork,reuseaddr`）を compose.yaml に追加
-
-- [ ] **playersync 設定削除**: 単一サーバーになるため playersync 関連の ConfigMap 参照を削除
-
-- [ ] **k8s マニフェスト更新**: `k8s/onprem/backend-servers.yaml` のコメント・構造を更新
-
-- [ ] **Lobby の扱い検討**: 単一サーバー化に伴い Lobby を残すか廃止するか判断
-
-- [ ] **テスト・動作確認**: 統合サーバー起動、ディメンション間移動、MOD 動作、プラグイン互換性の確認
 
 ### 完了条件
 - Survival + Industry が 1 つの Helm リリースで稼働
