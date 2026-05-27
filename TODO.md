@@ -55,7 +55,10 @@
   - ✅ 選定: Ad Astra（月面を工業ディメンションとして活用）
   - ✅ 既存 MOD セット（86 MOD）との互換性確認 → Resourceful Lib は既存、追加は `resourceful-config` `botarium` `ad-astra` の3つ
   - ✅ 設計書: `Documents/README/dimension-split-design.md`
-  - ⚠️ values-survival.yaml への MOD 追加とデプロイは未実施（Phase 0 の最終段階で実施）
+  - ✅ CF_PROJECTS に World Portal MOD (1205026) を追加（helm upgrade 成功、Revision 14）
+  - ✅ deploy-survival 起動確認（Done! 1.056s、正常稼働中）
+  - ⚠️ datapack (industry_dim) の PVC 配置は未実施（helper Pod 経由で次回実施）
+  - ⚠️ ディメンション登録 (`/dimensionconfig`) の動作確認は未実施
 
 ### 完了条件
 - Survival + Industry が 1 つの Helm リリースで稼働

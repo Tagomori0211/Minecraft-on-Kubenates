@@ -1,0 +1,11 @@
+{
+  "type": "sushi:industry",
+  "generator": {
+    "type": "minecraft:noise",
+    "settings": "sushi:industry",
+    "biome_source": {
+      "type": "minecraft:multi_noise",
+      "preset": "minecraft:overworld"
+    }
+  }
+}

@@ -32,6 +32,8 @@ server:
   jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=32M -XX:G1ReservePercent=20 -XX:+UnlockExperimentalVMOptions -XX:G1MixedGCCountTarget=4 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40"
   onlineMode: "FALSE"
   mods:
+    # --- 工業ディメンション用（World Portal + vanilla datapack方式に変更）---
+    # World Portal は CF_PROJECTS または mods に追加（schema 確認後）
     # --- YUNG's Better シリーズ ---
     - "yungs-api"
     - "terrablender"
@@ -111,7 +113,7 @@ server:
     - name: MODRINTH_DOWNLOAD_DEPENDENCIES
       value: "REQUIRED"
     - name: CF_PROJECTS
-      value: "306345,246763" # 306345=TerraBlender / 246763=CF版ライブラリ(GeckoLibではない、実CF ID=388172)
+      value: "306345,246763,1205026" # 306345=TerraBlender / 246763=CF版ライブラリ(GeckoLibではない、実CF ID=388172) / 1205026=World Portal
     - name: MODS
       value: "https://www.curseforge.com/api/v1/mods/227639/files/7797302/download"
     - name: CF_DOWNLOAD_DEPENDENCIES
