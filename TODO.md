@@ -46,12 +46,15 @@
   - ✅ `k8s/onprem/playersync-configmaps.yaml.example` 削除
   - ✅ `values-survival.yaml` の playersync 関連 env/volume 参照は既に削除済み（コメントに明記）
 
-- [ ] **k8s マニフェスト整理**: 
-  - `k8s/onprem/backend-servers.yaml` のコメント・構造を更新（Lobby/Industry/Velocity の記述削除、survival 一本化に合わせる）
-  - `k8s/onprem/helm/values-lobby.yaml`, `values-industry.yaml` は既に削除済み ✅
+- [x] **k8s マニフェスト整理**: 
+  - ✅ `k8s/onprem/backend-servers.yaml` のコメント・構造を更新（Lobby/Industry/Velocity の記述削除、survival 一本化に合わせる）
+  - ✅ `k8s/onprem/helm/values-lobby.yaml`, `values-industry.yaml` は既に削除済み
 
-- [ ] **ディメンション分割の設計**: 工業ワールド用のカスタムディメンション設定を追加
-  - 工業エリアへのポータル移動手段の選定（waystones / 専用ポータル MOD / カスタムディメンション MOD など）
+- [x] **ディメンション分割の設計**: 工業ワールド用のカスタムディメンション設定を追加
+  - ✅ 選定: Ad Astra（月面を工業ディメンションとして活用）
+  - ✅ 既存 MOD セット（86 MOD）との互換性確認 → Resourceful Lib は既存、追加は `resourceful-config` `botarium` `ad-astra` の3つ
+  - ✅ 設計書: `Documents/README/dimension-split-design.md`
+  - ⚠️ values-survival.yaml への MOD 追加とデプロイは未実施（Phase 0 の最終段階で実施）
 
 ### 完了条件
 - Survival + Industry が 1 つの Helm リリースで稼働
