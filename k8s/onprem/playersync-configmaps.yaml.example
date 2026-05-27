@@ -1,50 +1,15 @@
 # ============================================================
-# PlayersSync mod 設定 ConfigMap テンプレート（3サーバー分）
+# PlayersSync mod 設定 ConfigMap テンプレート
 #
-# このファイルは例示用。DB パスワードを置換して保存:
-#   k8s/onprem/playersync-configmaps.yaml  ← gitignore 済み
+# ⚠️ 注意: 2026/05 統合により Survival+Lobby+Industry → Survival 統合の単一サーバー構成に移行。
+#    単一サーバーではプレイヤー間同期(playersync)は不要なため、本ファイルの ConfigMap は非アクティブ。
+#    将来サーバーを分割する際に参照用として保持。
 #
-# 準備手順:
-#   cp k8s/onprem/playersync-configmaps.yaml.example \
-#      k8s/onprem/playersync-configmaps.yaml
-#   # REPLACE_WITH_DB_PASSWORD を実際のパスワードに編集
-#   rsync k8s/onprem/playersync-configmaps.yaml k3s-worker:~/k8s_manifests/
-#   ssh k3s-worker "sudo kubectl apply -f ~/k8s_manifests/playersync-configmaps.yaml"
-#
-# ⚠️ 注意: 実際の設定ファイル名は playersync-common.toml
-#    キー名は playersync-1.21.1-2.1.5 の自動生成ファイルで確認済み
+# 元の構成 (3サーバー):
+#   - Lobby (Server_id=1) → 廃止
+#   - Survival (Server_id=2) → 唯一の統合サーバーに
+#   - Industry (Server_id=3) → Survival に統合
 # ============================================================
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: lobby-playersync-cm
-  namespace: minecraft
-  labels:
-    app.kubernetes.io/name: minecraft-java
-    app.kubernetes.io/component: lobby
-    app.kubernetes.io/managed-by: kubectl
-    env: prod
-data:
-  playersync-common.toml: |
-    #General settings
-    [general]
-    	host = "mariadb.minecraft-data.svc.cluster.local"
-    	db_port = 3306
-    	use_ssl = false
-    	user_name = "playersync"
-    	password = "REPLACE_WITH_DB_PASSWORD"
-    	db_name = "playersync"
-    	Server_id = 1
-    	sync_world = []
-    	sync_advancements = false
-    	sync_chat = false
-    	IsChatServer = false
-    	ChatServerIP = "127.0.0.1"
-    	ChatServerPort = 7900
-    	use_legacy_serialization = false
-    	item_placeholder_title_override = ""
-    	item_placeholder_description_override = ""
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -67,37 +32,6 @@ data:
     	password = "REPLACE_WITH_DB_PASSWORD"
     	db_name = "playersync"
     	Server_id = 2
-    	sync_world = []
-    	sync_advancements = false
-    	sync_chat = false
-    	IsChatServer = false
-    	ChatServerIP = "127.0.0.1"
-    	ChatServerPort = 7900
-    	use_legacy_serialization = false
-    	item_placeholder_title_override = ""
-    	item_placeholder_description_override = ""
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: industry-playersync-cm
-  namespace: minecraft
-  labels:
-    app.kubernetes.io/name: minecraft-java
-    app.kubernetes.io/component: industry
-    app.kubernetes.io/managed-by: kubectl
-    env: prod
-data:
-  playersync-common.toml: |
-    #General settings
-    [general]
-    	host = "mariadb.minecraft-data.svc.cluster.local"
-    	db_port = 3306
-    	use_ssl = false
-    	user_name = "playersync"
-    	password = "REPLACE_WITH_DB_PASSWORD"
-    	db_name = "playersync"
-    	Server_id = 3
     	sync_world = []
     	sync_advancements = false
     	sync_chat = false

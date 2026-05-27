@@ -1,16 +1,38 @@
+# ============================================================
+# Survival 統合サーバー (Survival + Industry 統合 / Lobby 廃止)
+# ============================================================
+# 旧: Survival (16Gi) + Industry (30Gi) + Lobby (8Gi) の3サーバー構成
+# 新: Survival 統合 (30Gi) 単一サーバー
+#
+# 変更点:
+#   - メモリ: 16G → 30G (Industryの割当を継承)
+#   - CPU: 2000m → 4000m (Industryの割当を継承)
+#   - JVM: IndustryのG1GC 30GBヒープ用チューニングに統一
+#   - playersync: 削除 (単一サーバーで不要)
+#   - extraConfigMaps: 削除 (playersync ConfigMap参照のため不要)
+#   - LEVEL_SEED: 削除 (ランダムシードで新規ワールド生成)
+#   - velocity.enabled: false (Lobby廃止に伴い直結)
+#   - MODs: Survival + Industryの共通MOD + chart defaults軽量MODを統合
+#   - ストレージ: 30Gi (Industryの容量を継承)
+#
+# デプロイ方法:
+#   helm upgrade --install survival ./minecraft-server -f values-survival.yaml -n minecraft
+# ============================================================
+
 server:
   name: "survival"
   type: "NEOFORGE"
   version: "1.21.1"
   neoforgeVersion: "21.1.228"
-  memory: "16G"
-  memoryRequest: "14Gi"
-  memoryLimit: "16Gi"
-  cpuRequest: "2000m"
-  cpuLimit: "2000m"
-  jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16M -XX:G1ReservePercent=20"
+  memory: "30G"
+  memoryRequest: "29Gi"
+  memoryLimit: "30Gi"
+  cpuRequest: "4000m"
+  cpuLimit: "4000m"
+  jvmOpts: "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=32M -XX:G1ReservePercent=20 -XX:+UnlockExperimentalVMOptions -XX:G1MixedGCCountTarget=4 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40"
   onlineMode: "FALSE"
   mods:
+    # --- YUNG's Better シリーズ ---
     - "yungs-api"
     - "terrablender"
     - "architectury-api"
@@ -27,6 +49,7 @@ server:
     - "yungs-extras"
     - "yungs-better-caves"
     - "yungs-cave-biomes"
+    # --- Farmer's Delight + アドオン ---
     - "farmers-delight"
     - "sophisticated-backpacks"
     - "sophisticated-core"
@@ -46,6 +69,7 @@ server:
     - "rustic-delight"
     - "trailtales-delight"
     - "cultural-delights"
+    # --- Mekanism + AE2 工業系 ---
     - "mekanism"
     - "mekanism-additions"
     - "mekanism-generators"
@@ -60,21 +84,34 @@ server:
     - "mekanism-lasers:r5nDcriB"
     - "mekanism_extra"
     - "evolved-mekanism"
+    # --- ユーティリティ ---
     - "cosmetic-armor-reworked-forked"
     - "carry-on"
     - "gravestone-mod"
-    - "playersync:mK3hQ8Vs"
-  extraConfigMaps:
-    - name: "survival-playersync-cm"
-      mountPath: "/data/config/playersync-common.toml"
-      subPath: "playersync-common.toml"
+    # --- クライアント系軽量MOD (chart defaultsより追加) ---
+    - "journeymap"
+    - "emi"
+    - "jade"
+    - "appleskin"
+    - "embeddium"
+    - "modernfix"
+    - "neat"
+    - "trashslot"
+    - "balm"
+    - "leaves-be-gone"
+    - "puzzles-lib"
+    - "netherportalfix"
+    - "liteminer"
+    - "amber"
+    - "connected-glass"
+    - "ferrite-core"
   extraEnv:
     - name: MODRINTH_ALLOWED_VERSION_TYPE
       value: "alpha"
     - name: MODRINTH_DOWNLOAD_DEPENDENCIES
       value: "REQUIRED"
     - name: CF_PROJECTS
-      value: "306345,246763" # 306345=TerraBlender / 246763=用途不明(GeckoLibではない、実CF ID=388172)
+      value: "306345,246763" # 306345=TerraBlender / 246763=CF版ライブラリ(GeckoLibではない、実CF ID=388172)
     - name: MODS
       value: "https://www.curseforge.com/api/v1/mods/227639/files/7797302/download"
     - name: CF_DOWNLOAD_DEPENDENCIES
@@ -88,11 +125,11 @@ network:
   port: 25565
 
 storage:
-  size: "20Gi"
+  size: "30Gi"
 
 metrics:
   enabled: true
   port: 8080
 
 velocity:
-  enabled: true
+  enabled: false
