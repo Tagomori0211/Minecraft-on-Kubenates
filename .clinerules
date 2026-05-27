@@ -133,6 +133,15 @@ labels:
 - `.agents/workflows/MCBDS_addon_install.md` — Bedrock アドオン導入手順
 - `.agents/workflows/MCBDS_restore.md` — Bedrock ワールドリストア手順
 
+## 進行停止時の自動回復（2026-05-27 追加）
+
+sleep+300s 経過しても進展がない場合、以下を自動実施:
+1. 原因特定（`&&` 連結違反 / IAP 切断 / シグナル停止）
+2. 再発防止ルールを適切な `.agents/` ドキュメントに追加
+3. 中断タスクを再開し commit + push まで完了
+
+詳細フローは `.agents/rules/Base-prompt.md` の「進行停止時の自動回復フロー」を参照。
+
 ---
 
 ## サブエージェント展開ルール
