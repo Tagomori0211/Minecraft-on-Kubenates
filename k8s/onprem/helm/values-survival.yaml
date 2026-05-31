@@ -111,13 +111,13 @@ server:
     - name: MODRINTH_ALLOWED_VERSION_TYPE
       value: "alpha"
     - name: MODRINTH_DOWNLOAD_DEPENDENCIES
-      value: "REQUIRED"
+      value: "NONE"
     - name: CF_PROJECTS
-      value: "306345,246763,1205026" # 306345=TerraBlender / 246763=CF版ライブラリ(GeckoLibではない、実CF ID=388172) / 1205026=World Portal
+      value: "306345,1205026" # 306345=TerraBlender / 1205026=World Portal
     - name: MODS
       value: "https://www.curseforge.com/api/v1/mods/227639/files/7797302/download"
     - name: CF_DOWNLOAD_DEPENDENCIES
-      value: "REQUIRED"
+      value: "NONE"
     - name: CF_ALLOWED_VERSION_TYPE
       value: "alpha"
 

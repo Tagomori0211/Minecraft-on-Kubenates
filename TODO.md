@@ -1,6 +1,6 @@
 # TODO - TAK Pipeline
 
-> **最終更新**: 2026-05-27
+> **最終更新**: 2026-05-31
 > **優先順位**: Phase 0（割り込み） > Phase 1 > Phase 2 > Phase 3
 
 ---
@@ -52,13 +52,21 @@
   - ✅ `k8s/onprem/helm/values-lobby.yaml`, `values-industry.yaml` は既に削除済み
 
 - [x] **ディメンション分割の設計**: 工業ワールド用のカスタムディメンション設定を追加
-  - ✅ 選定: Ad Astra（月面を工業ディメンションとして活用）
-  - ✅ 既存 MOD セット（86 MOD）との互換性確認 → Resourceful Lib は既存、追加は `resourceful-config` `botarium` `ad-astra` の3つ
+  - ✅ 選定: TerraBlender + datapack 方式（Ad Astra から変更）
   - ✅ 設計書: `Documents/README/dimension-split-design.md`
-  - ✅ CF_PROJECTS に World Portal MOD (1205026) を追加（helm upgrade 成功、Revision 14）
-  - ✅ deploy-survival 起動確認（Done! 1.056s、正常稼働中）
+  - ✅ CF_PROJECTS に World Portal MOD (1205026) を追加
+  - ✅ deploy-survival 起動確認（Done! 正常稼働中）
   - ⚠️ datapack (industry_dim) の PVC 配置は未実施（helper Pod 経由で次回実施）
   - ⚠️ ディメンション登録 (`/dimensionconfig`) の動作確認は未実施
+
+- [x] **Sophisticated Backpacks/Core バージョン不一致 修正** (2026-05-31):
+  - ✅ 原因特定: velocity-support MOD が原因（古いバージョン依存関係の競合）
+  - ✅ velocity-support jar を PVC + コンテナから削除
+  - ✅ values-survival.yaml 修正: CF_PROJECTS から 246763 削除、依存ダウンロード NONE に設定
+  - ✅ deploy-survival replicas=0 → replicas=1 再起動
+  - ✅ 起動確認: Done! (1.113s)、Sophisticated 3.25.49/1.4.42 正常ロード
+  - ⚠️ velocity-support が helm chart の mods リストに残っている場合、次回 helm upgrade で復活する可能性あり
+  - ⚠️ クライアントからの接続確認は未実施（サーバーログではエラー消失を確認）
 
 ### 完了条件
 - Survival + Industry が 1 つの Helm リリースで稼働
