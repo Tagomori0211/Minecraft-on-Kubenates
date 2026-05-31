@@ -59,14 +59,16 @@
   - ⚠️ datapack (industry_dim) の PVC 配置は未実施（helper Pod 経由で次回実施）
   - ⚠️ ディメンション登録 (`/dimensionconfig`) の動作確認は未実施
 
-- [x] **Sophisticated Backpacks/Core バージョン不一致 修正** (2026-05-31):
+- [x] **Sophisticated Backpacks/Core バージョン不一致 修正 + Helm テンプレートバグ修正** (2026-05-31):
   - ✅ 原因特定: velocity-support MOD が原因（古いバージョン依存関係の競合）
-  - ✅ velocity-support jar を PVC + コンテナから削除
-  - ✅ values-survival.yaml 修正: CF_PROJECTS から 246763 削除、依存ダウンロード NONE に設定
-  - ✅ deploy-survival replicas=0 → replicas=1 再起動
-  - ✅ 起動確認: Done! (1.113s)、Sophisticated 3.25.49/1.4.42 正常ロード
-  - ⚠️ velocity-support が helm chart の mods リストに残っている場合、次回 helm upgrade で復活する可能性あり
-  - ⚠️ クライアントからの接続確認は未実施（サーバーログではエラー消失を確認）
+  - ✅ 根本原因: deployment.yaml の条件分岐が `or` で `MODRINTH_DOWNLOAD_DEPENDENCIES` を評価し、空文字でなければ `required/optional` 設定値が無視されていた（`MODS` が空のためスキップ）
+  - ✅ deployment.yaml 修正: `.Values.server.mods` が設定されている場合は依存ダウンロードチェックをスキップする else-if を追加（再帰的ダウンロードが無限ループしないよう明示的に制御）
+  - ✅ 修正後、NeoForge 再ダウンロードで 53→78jar に増加し、不足していた依存 MOD が自動解決
+  - ✅ Helm upgrade 後、Sophisticated 含む全 MOD 正常ロード、Done! (1.130s) 確認
+  - ✅ velocity-support jar を PVC から手動削除（busybox Pod 経由）
+  - ✅ MODRINTH_DOWNLOAD_DEPENDENCIES: "NONE" → "required" に変更
+  - ✅ CF_DOWNLOAD_DEPENDENCIES: "NONE" → "required" に変更
+  - ✅ Pod 3/3 Running、接続待ち受け確認済み
 
 ### 完了条件
 - Survival + Industry が 1 つの Helm リリースで稼働
