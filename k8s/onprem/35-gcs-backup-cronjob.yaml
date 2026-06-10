@@ -67,7 +67,7 @@ data:
     NAMESPACE="minecraft"
     DATE_STR=$(date +%Y-%m-%d)
     BUCKET="gs://sushiski-mc-backups"
-    ALL_DEPLOYS="deploy-survival deploy-lobby deploy-mod deploy-bedrock"
+    ALL_DEPLOYS="deploy-survival deploy-bedrock"
 
     # kubectl インストール（google/cloud-sdk:slim には含まれないため取得）
     echo "→ kubectl インストール中..."
@@ -76,11 +76,14 @@ data:
       "https://dl.k8s.io/release/${K8S_VER}/bin/linux/amd64/kubectl"
     chmod +x /usr/local/bin/kubectl
 
-    # gcloud 認証（コンテナ起動時は credential store が空のため明示的にセット）
-    echo "→ gcloud 認証中..."
-    gcloud auth login --cred-file=/secrets/gcs-key.json --quiet 2>/dev/null || true
-    PROJECT_ID=$(gcloud config get project 2>/dev/null)
+    # gcloud 認証: Secret の user ADC（authorized_user）は gcloud auth login 非対応のため
+    # CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE（CronJob env で設定）経由で使用する
+    echo "→ gcloud 認証確認中..."
+    PROJECT_ID=$(gcloud config get project)
     SA_EMAIL="mc-proxy-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+    # サーバー停止前に認証を検証（失敗時はサーバー無停止のまま即終了）
+    gcloud storage ls "${BUCKET}" > /dev/null
+    echo "  認証 OK (project: ${PROJECT_ID})"
 
     # Discord webhook URL を Secret Manager から取得（失敗時は空文字 = 通知スキップ）
     DISCORD_WEBHOOK=$(gcloud secrets versions access latest \
@@ -106,43 +109,45 @@ data:
 
       # Python3 で Discord embed JSON を構築
       python3 - << PYEOF
-import json, urllib.request, sys
+    import json, urllib.request, sys
 
-webhook_url = "${DISCORD_WEBHOOK}"
-date_str    = "${DATE_STR}"
-status      = "${STATUS}"
-color       = ${COLOR}
-title       = "${TITLE}"
+    webhook_url = "${DISCORD_WEBHOOK}"
+    date_str    = "${DATE_STR}"
+    status      = "${STATUS}"
+    color       = ${COLOR}
+    title       = "${TITLE}"
 
-# 署名付き URL フィールドを構築
-signed_urls = {}
-$(for K in "${!SIGNED_URLS[@]}"; do echo "signed_urls['${K}'] = '${SIGNED_URLS[$K]}'"; done)
+    # 署名付き URL フィールドを構築
+    signed_urls = {}
+    $(for K in "${!SIGNED_URLS[@]}"; do echo "signed_urls['${K}'] = '${SIGNED_URLS[$K]}'"; done)
 
-fields = []
-for fname, url in sorted(signed_urls.items()):
-    val = f"[ダウンロード]({url})" if url else "URL 生成失敗"
-    fields.append({"name": fname, "value": val, "inline": False})
+    fields = []
+    for fname, url in sorted(signed_urls.items()):
+        val = f"[ダウンロード]({url})" if url else "URL 生成失敗"
+        fields.append({"name": fname, "value": val, "inline": False})
 
-if status == "failure" and not fields:
-    fields.append({"name": "詳細", "value": "スクリプト実行中にエラーが発生しました。", "inline": False})
+    if status == "failure" and not fields:
+        fields.append({"name": "詳細", "value": "スクリプト実行中にエラーが発生しました。", "inline": False})
 
-embed = {
-    "title": title,
-    "description": f"{date_str} のバックアップ処理が完了しました。\n署名付き URL の有効期限: **7日間**",
-    "color": color,
-    "fields": fields,
-}
+    embed = {
+        "title": title,
+        "description": f"{date_str} のバックアップ処理が完了しました。\n署名付き URL の有効期限: **12時間**",
+        "color": color,
+        "fields": fields,
+    }
 
-payload = json.dumps({"embeds": [embed]}).encode()
-req = urllib.request.Request(
-    webhook_url, data=payload, headers={"Content-Type": "application/json"}
-)
-try:
-    urllib.request.urlopen(req, timeout=10)
-    print("Discord 通知送信完了", flush=True)
-except Exception as e:
-    print(f"Discord 通知失敗 (継続): {e}", flush=True)
-PYEOF
+    payload = json.dumps({"embeds": [embed]}).encode()
+    # Discord(Cloudflare) はデフォルトの Python-urllib UA を 403 (error 1010) で拒否する
+    req = urllib.request.Request(
+        webhook_url, data=payload,
+        headers={"Content-Type": "application/json", "User-Agent": "mc-backup-notifier/1.0"},
+    )
+    try:
+        urllib.request.urlopen(req, timeout=10)
+        print("Discord 通知送信完了", flush=True)
+    except Exception as e:
+        print(f"Discord 通知失敗 (継続): {e}", flush=True)
+    PYEOF
     }
 
     # ============================================================
@@ -171,35 +176,35 @@ PYEOF
         [ -z "${POD}" ] && return 0
         kubectl exec -n "${NAMESPACE}" "${POD}" -c bedrock -- send-command "${MSG}" 2>/dev/null || true
       else
-        POD=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/name=${SERVER}" \
+        POD=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/component=${SERVER}" \
           --no-headers -o custom-columns=':metadata.name' 2>/dev/null | head -1)
         [ -z "${POD}" ] && return 0
-        kubectl exec -n "${NAMESPACE}" "${POD}" -- rcon-cli "${MSG}" 2>/dev/null || true
+        kubectl exec -n "${NAMESPACE}" "${POD}" -c minecraft -- rcon-cli "${MSG}" 2>/dev/null || true
       fi
     }
 
     echo "→ メンテナンスアナウンスを送信中..."
-    for S in survival lobby mod bedrock; do
+    for S in survival bedrock; do
       announce_server "${S}" "say [月次バックアップ] 35秒後にサーバーを停止します"
     done
     sleep 5
 
-    for S in survival lobby mod bedrock; do
+    for S in survival bedrock; do
       announce_server "${S}" "say 30秒後にサーバーは再起動します"
     done
     sleep 25
 
-    for S in survival lobby mod bedrock; do
+    for S in survival bedrock; do
       announce_server "${S}" "say 再起動します"
     done
     sleep 5
 
     # グレースフルストップ
     echo "→ グレースフルストップを送信中..."
-    for S in survival lobby mod; do
-      POD=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/name=${S}" \
+    for S in survival; do
+      POD=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/component=${S}" \
         --no-headers -o custom-columns=':metadata.name' 2>/dev/null | head -1)
-      [ -n "${POD}" ] && kubectl exec -n "${NAMESPACE}" "${POD}" -- rcon-cli "stop" 2>/dev/null || true
+      [ -n "${POD}" ] && kubectl exec -n "${NAMESPACE}" "${POD}" -c minecraft -- rcon-cli "stop" 2>/dev/null || true
     done
     BEDROCK_POD=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/component=bedrock \
       --no-headers -o custom-columns=':metadata.name' 2>/dev/null | head -1)
@@ -234,7 +239,7 @@ PYEOF
     # ============================================================
     # Java バックアップ（サーバーごとに個別アーカイブ）
     # ============================================================
-    for SERVER in survival lobby mod; do
+    for SERVER in survival; do
       TAR_FILE="/tmp/${DATE_STR}_${SERVER}.tar.gz"
       echo "→ Java/${SERVER} バックアップ作成中: $(basename ${TAR_FILE})"
 
@@ -269,20 +274,21 @@ PYEOF
     echo "→ GCS にアップロード中 (${BUCKET})..."
     for TAR_FILE in \
       "/tmp/${DATE_STR}_BE.tar.gz" \
-      "/tmp/${DATE_STR}_survival.tar.gz" \
-      "/tmp/${DATE_STR}_lobby.tar.gz" \
-      "/tmp/${DATE_STR}_mod.tar.gz"; do
+      "/tmp/${DATE_STR}_survival.tar.gz"; do
       if [ -s "${TAR_FILE}" ]; then
         FNAME=$(basename "${TAR_FILE}")
-        gsutil cp "${TAR_FILE}" "${BUCKET}/${FNAME}"
+        gcloud storage cp "${TAR_FILE}" "${BUCKET}/${FNAME}"
         echo "  完了: ${FNAME}"
 
-        # mc-proxy-sa を使った V4 署名付き URL（7日有効）を生成
+        # mc-proxy-sa を使った V4 署名付き URL を生成
+        # system-managed key（IAM signBlob）のため最大 12h
+        # mc-proxy-sa は storage.buckets.get を持たないため --region 必須
         SIGNED_URL=$(gcloud storage sign-url \
           --impersonate-service-account="${SA_EMAIL}" \
-          --duration=7d \
+          --duration=12h \
+          --region=asia-northeast1 \
           "${BUCKET}/${FNAME}" \
-          --format="value(signedUrl)" 2>/dev/null || echo "")
+          --format="value(signed_url)" 2>/dev/null || echo "")
         SIGNED_URLS["${FNAME}"]="${SIGNED_URL}"
         [ -n "${SIGNED_URL}" ] && echo "  署名済み URL 生成完了: ${FNAME}" || echo "  警告: URL 生成失敗 ${FNAME}"
 
@@ -333,6 +339,14 @@ spec:
               env:
                 - name: GOOGLE_APPLICATION_CREDENTIALS
                   value: /secrets/gcs-key.json
+                # cred-file 認証ではプロジェクトが未設定になるため明示指定
+                # （Secret Manager アクセスと署名付き URL の SA 組み立てに必須）
+                - name: CLOUDSDK_CORE_PROJECT
+                  value: project-61cf5742-d0ea-45ed-ac0
+                # user ADC（authorized_user）は gcloud auth login --cred-file 非対応のため
+                # この env で gcloud/gcloud storage に直接認証情報を渡す
+                - name: CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE
+                  value: /secrets/gcs-key.json
               resources:
                 requests:
                   cpu: 200m
@@ -353,12 +367,6 @@ spec:
                 - name: data-survival
                   mountPath: /data/survival
                   readOnly: true
-                - name: data-lobby
-                  mountPath: /data/lobby
-                  readOnly: true
-                - name: data-mod
-                  mountPath: /data/mod
-                  readOnly: true
           volumes:
             - name: script-volume
               configMap:
@@ -376,9 +384,3 @@ spec:
             - name: data-survival
               persistentVolumeClaim:
                 claimName: pvc-survival
-            - name: data-lobby
-              persistentVolumeClaim:
-                claimName: pvc-lobby
-            - name: data-mod
-              persistentVolumeClaim:
-                claimName: pvc-mod
