@@ -6,7 +6,7 @@
 # 認証: k3s ノードから user ADC を k8s Secret として使用
 #
 # ライフサイクル:
-#   作成 → 365日後 ARCHIVE → 1095日後（3年）削除
+#   作成 → 30日後 ARCHIVE → 365日後（1年）削除
 # ============================================================
 
 resource "google_storage_bucket" "mc_backups" {
@@ -18,10 +18,12 @@ resource "google_storage_bucket" "mc_backups" {
   public_access_prevention    = "enforced"
   force_destroy               = false
 
-  # 365日後 COLDLINE → ARCHIVE へ降格
+  # 30日後 COLDLINE → ARCHIVE へ降格
+  # 注: COLDLINE の最低保存期間は 90 日のため、30 日での降格には
+  #     残り 60 日分の早期削除料金が発生する（数百MB規模では誤差）
   lifecycle_rule {
     condition {
-      age = 365
+      age = 30
     }
     action {
       type          = "SetStorageClass"
@@ -29,10 +31,10 @@ resource "google_storage_bucket" "mc_backups" {
     }
   }
 
-  # 3年（1095日）後に削除
+  # 1年（365日）後に削除
   lifecycle_rule {
     condition {
-      age = 1095
+      age = 365
     }
     action {
       type = "Delete"
