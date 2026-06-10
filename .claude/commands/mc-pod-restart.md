@@ -1,3 +1,7 @@
+---
+description: minecraft Pod 安全再起動（OOM回避・replicas=0→1 厳守）
+---
+
 # minecraft Pod 安全再起動（OOM回避）
 
 `minecraft` namespace の重量級 deployment（`deploy-mod` / `deploy-survival` / `deploy-lobby`）を再起動する手順。

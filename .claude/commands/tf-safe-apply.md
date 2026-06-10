@@ -1,4 +1,9 @@
+---
+description: Safe Terraform Apply（plan 確認 → 破壊的変更強調 → 承認後 apply）
+---
+
 # Safe Terraform Apply
+
 1. `terraform plan -out=tfplan` を実行し、出力全体を表示する
 2. リソースの REPLACEMENT または DESTROY アクションを強調表示する
 3. 特に GKE クラスタの再作成、Proxmox のタグ・ブートデバイス問題をチェック

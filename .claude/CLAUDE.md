@@ -81,3 +81,18 @@ cd Terraform && terraform plan -var-file=secret.tfvars
 git add -A
 git commit -m "feat(scope): description..."
 git push
+```
+
+---
+
+# コマンド化推奨（自動判定ルール）
+
+ユーザーから新たな指示を受け取った際は、それが**繰り返し発生する可能性が高いタスク**か自動判定し、該当する場合は `.claude/commands/<name>.md` へのコマンド化を提案すること。判定基準・テンプレート・提案メッセージ形式は [.claude/commands/command-recommender.md](commands/command-recommender.md) に従う。
+
+- **判定タイミング**: 新しい指示を受け取るたびに内部で評価する（明示的な `/command-recommender` 呼び出しを待たない）
+- **原則**: ユーザーの許可なくコマンドファイルを作成しない。必ず「提案 → 確認 → 作成」のフローを踏む
+- **スコア基準**（5軸 × 0〜2点）:
+  - 0〜3点: コマンド化不要、そのまま実行
+  - 4〜6点: コマンド化を提案
+  - 7〜10点: コマンド化を強く推奨
+- 提案前に必ず `.claude/commands/` の既存コマンドと重複チェックを行う
