@@ -45,6 +45,122 @@ data:
 
 ---
 # ============================================================
+# Bedrock カスタム Prometheus エクスポーター
+# ============================================================
+# BDS 1.26.x は RakNet Unconnected Pong に MOTD 文字列を含まない
+# 33 バイト最小応答を返す（itzg/mc-monitor では unexpected EOF → healthy=0）。
+# このエクスポーターは MOTD の有無に関わらず任意の Pong 応答を healthy=1 と判定する。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bedrock-monitor-cm
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/component: bedrock
+    app.kubernetes.io/part-of: tak-pipeline
+data:
+  monitor.py: |
+    #!/usr/bin/env python3
+    import glob, socket, struct, time, random, threading
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    MAGIC = b'\x00\xff\xff\x00\xfe\xfe\xfe\xfe\xfd\xfd\xfd\xfd\x12\x34\x56\x78'
+    HOST, PORT = '127.0.0.1', 19132
+    INTERVAL, TIMEOUT = 15, 5
+    DATA_DIR = '/data'
+
+    def read_static_info():
+        """BDS バージョンと max-players を起動時に server.properties / ファイル名から取得。
+        BDS 1.26.x は RakNet pong に MOTD を含まないためここで補完する。"""
+        max_players = 0
+        version = ''
+        try:
+            with open(f'{DATA_DIR}/server.properties') as f:
+                for line in f:
+                    if line.startswith('max-players='):
+                        max_players = int(line.split('=', 1)[1].strip())
+        except (OSError, ValueError):
+            pass
+        try:
+            # itzg wrapper が /data/bedrock_server-X.Y.Z.W を作成する
+            matches = glob.glob(f'{DATA_DIR}/bedrock_server-*')
+            if matches:
+                version = matches[0].split('bedrock_server-', 1)[1]
+        except Exception:
+            pass
+        return max_players, version
+
+    _static_max_players, _static_version = read_static_info()
+
+    _lock = threading.Lock()
+    _state = {'healthy': 0, 'players': 0, 'rt': 0.0}
+
+    def ping():
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(TIMEOUT)
+        try:
+            pkt = b'\x01' + struct.pack('>Q', int(time.time()*1000)) + MAGIC + struct.pack('>Q', random.getrandbits(64))
+            t0 = time.monotonic()
+            s.sendto(pkt, (HOST, PORT))
+            data, _ = s.recvfrom(4096)
+            elapsed = time.monotonic() - t0
+            # MOTD があれば players_online を解析（BDS 将来版で修正された場合に対応）
+            players = 0
+            if len(data) > 35:
+                slen = struct.unpack('>H', data[33:35])[0]
+                if len(data) >= 35 + slen > 0:
+                    parts = data[35:35+slen].decode('utf-8', errors='replace').split(';')
+                    try: players = int(parts[4])
+                    except (ValueError, IndexError): pass
+            return 1, players, elapsed
+        except socket.timeout:
+            return 0, 0, 0.0
+        except Exception:
+            return 0, 0, 0.0
+        finally:
+            s.close()
+
+    def loop():
+        while True:
+            h, p, rt = ping()
+            with _lock:
+                _state.update({'healthy': h, 'players': p, 'rt': rt})
+            time.sleep(INTERVAL)
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != '/metrics':
+                self.send_response(404); self.end_headers(); return
+            with _lock:
+                s = dict(_state)
+            v = _static_version
+            lbl = f'server_edition="bedrock",server_host="{HOST}",server_port="{PORT}",server_version="{v}"'
+            body = '\n'.join([
+                '# HELP minecraft_status_healthy Indicates if the server is healthy (1) or not (0)',
+                '# TYPE minecraft_status_healthy gauge',
+                f'minecraft_status_healthy{{{lbl}}} {s["healthy"]}',
+                '# HELP minecraft_status_players_online_count Current online players',
+                '# TYPE minecraft_status_players_online_count gauge',
+                f'minecraft_status_players_online_count{{{lbl}}} {s["players"]}',
+                '# HELP minecraft_status_players_max_count Maximum players',
+                '# TYPE minecraft_status_players_max_count gauge',
+                f'minecraft_status_players_max_count{{{lbl}}} {_static_max_players}',
+                '# HELP minecraft_status_response_time_seconds Server response time in seconds',
+                '# TYPE minecraft_status_response_time_seconds gauge',
+                f'minecraft_status_response_time_seconds{{{lbl}}} {s["rt"]}',
+            ]) + '\n'
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(body.encode())
+        def log_message(self, *a): pass
+
+    threading.Thread(target=loop, daemon=True).start()
+    print(f'bedrock-monitor :8080 -> {HOST}:{PORT} | version={_static_version} max_players={_static_max_players}')
+    HTTPServer(('', 8080), Handler).serve_forever()
+
+---
+# ============================================================
 # 3. Bedrock Server (2GB)
 # ============================================================
 # さくらVPS Nginx(UDP Proxy) → Tailscale → このサーバー
@@ -126,18 +242,21 @@ spec:
             limits: { memory: "8Gi", cpu: "8" }
         # Probes removed due to missing mc-monitor binary in bedrock image
 
-        # ── mc-monitor（Prometheus Exporter / Bedrock対応）────
-        # Prometheus -->|監視| Bedrock_Server (infrastructure.mermaid)
-        # --edition bedrock で UDP 19132 に問い合わせてメトリクスを :8080 で公開
+        # ── カスタム Bedrock モニター（Prometheus Exporter）────────
+        # BDS 1.26.x の MOTDなし最小Pong に対応した Python 製エクスポーター。
+        # itzg/mc-monitor は MOTD 必須のため healthy=0 になる問題を回避。
         - name: mc-monitor
-          image: itzg/mc-monitor:latest
-          args: ["export-for-prometheus"]
-          env:
-            - { name: EXPORT_BEDROCK_SERVERS, value: "127.0.0.1:19132" }
-            - { name: DEBUG, value: "false" }
+          image: python:3.12-alpine
+          command: ["python3", "/scripts/monitor.py"]
           ports:
             - containerPort: 8080
               name: metrics
+          volumeMounts:
+            - name: bedrock-monitor-script
+              mountPath: /scripts
+            - name: data
+              mountPath: /data
+              readOnly: true
           resources:
             requests: { memory: "32Mi", cpu: "10m" }
             limits: { memory: "64Mi", cpu: "100m" }
@@ -146,6 +265,9 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: pvc-bedrock
+        - name: bedrock-monitor-script
+          configMap:
+            name: bedrock-monitor-cm
 
 ---
 apiVersion: v1

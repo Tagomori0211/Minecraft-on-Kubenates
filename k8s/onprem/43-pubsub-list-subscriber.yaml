@@ -1,0 +1,315 @@
+# ============================================================
+# Pub/Sub list コマンド サブスクライバー
+# ============================================================
+# トリガー: minecraft-list-trigger topic → mc-list-sub subscription
+# 受信 JSON: { command: "list", server: "survival"|"bedrock"|"all", ... }
+# 実行:
+#   survival → kubectl exec -c minecraft -- rcon-cli list
+#   bedrock  → kubectl exec -c bedrock  -- send-command list
+# 認証: gcs-backup-credentials Secret（user ADC）を流用
+# ============================================================
+
+# ── ServiceAccount ────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pubsub-list-sa
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: pubsub-list-subscriber
+    app.kubernetes.io/component: pubsub
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+
+---
+# ── Role: Pod の参照と exec 権限 ──────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pubsub-list-role
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: pubsub-list-subscriber
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get", "create"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pubsub-list-rolebinding
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: pubsub-list-subscriber
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pubsub-list-role
+subjects:
+  - kind: ServiceAccount
+    name: pubsub-list-sa
+    namespace: minecraft
+
+---
+# ── ConfigMap: サブスクライバー Python スクリプト ──────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pubsub-list-script-cm
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: pubsub-list-subscriber
+    app.kubernetes.io/component: pubsub
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+data:
+  subscriber.py: |
+    #!/usr/bin/env python3
+    """
+    Pub/Sub サブスクライバー: mc-list-sub から list コマンドトリガーを受信し
+    対象 Minecraft コンテナで /list を実行してプレイヤー一覧をログに出力する。
+    """
+    import json
+    import logging
+    import os
+    import signal
+    import sys
+
+    from google.cloud import pubsub_v1
+    import kubernetes
+    from kubernetes.stream import stream as k8s_stream
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        stream=sys.stdout,
+        force=True,
+    )
+    log = logging.getLogger(__name__)
+
+    PROJECT_ID   = os.environ['GCP_PROJECT_ID']
+    SUBSCRIPTION = os.environ.get('PUBSUB_SUBSCRIPTION', 'mc-list-sub')
+    NAMESPACE    = 'minecraft'
+
+    # server 値 → (コンテナ名, 実行コマンド)
+    SERVER_CONFIG = {
+        'survival': ('minecraft', ['rcon-cli',     'list']),
+        'bedrock':  ('bedrock',   ['send-command', 'list']),
+    }
+
+
+    def get_running_pod(v1: kubernetes.client.CoreV1Api, component: str) -> str | None:
+        pods = v1.list_namespaced_pod(
+            namespace=NAMESPACE,
+            label_selector=f'app.kubernetes.io/component={component}',
+        )
+        for pod in pods.items:
+            if pod.status.phase == 'Running':
+                return pod.metadata.name
+        return None
+
+
+    def exec_list(v1: kubernetes.client.CoreV1Api, server: str) -> None:
+        container, command = SERVER_CONFIG[server]
+        pod_name = get_running_pod(v1, server)
+        if pod_name is None:
+            log.warning('[%s] Running Pod が見つかりません', server)
+            return
+
+        log.info('[%s] 実行: pod=%s container=%s cmd=%s', server, pod_name, container, command)
+        output = k8s_stream(
+            v1.connect_get_namespaced_pod_exec,
+            pod_name,
+            NAMESPACE,
+            container=container,
+            command=command,
+            stderr=True,
+            stdin=False,
+            stdout=True,
+            tty=False,
+        )
+        if output and output.strip():
+            log.info('[%s] /list 結果: %s', server, output.strip())
+        else:
+            # Bedrock の send-command はレスポンスを stdout に返さない
+            # → 実際の /list 出力は Bedrock コンテナのログに出力される
+            log.info('[%s] コマンド送信完了（レスポンスはサーバーコンソールを参照）', server)
+
+
+    def handle_message(
+        message: pubsub_v1.subscriber.message.Message,
+        v1: kubernetes.client.CoreV1Api,
+    ) -> None:
+        try:
+            # message.data は Pub/Sub クライアントがすでに base64 デコード済みのバイト列
+            payload = json.loads(message.data.decode('utf-8'))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            log.error('不正なメッセージ形式のため破棄: %s', exc)
+            message.ack()
+            return
+
+        command      = payload.get('command', '')
+        server       = payload.get('server', '')
+        source       = payload.get('source', '')
+        triggered_at = payload.get('triggeredAt', '')
+
+        log.info('メッセージ受信: command=%s server=%s source=%s triggeredAt=%s',
+                 command, server, source, triggered_at)
+
+        if command != 'list':
+            log.warning('未知のコマンド "%s" → ack して破棄', command)
+            message.ack()
+            return
+
+        targets = list(SERVER_CONFIG.keys()) if server == 'all' else [server]
+        if not all(t in SERVER_CONFIG for t in targets):
+            log.warning('未知のサーバー "%s" → ack して破棄', server)
+            message.ack()
+            return
+
+        errors = []
+        for target in targets:
+            try:
+                exec_list(v1, target)
+            except Exception as exc:
+                log.error('[%s] exec 失敗: %s', target, exc)
+                errors.append(target)
+
+        if errors:
+            log.warning('一部サーバーで失敗 %s → nack（再試行）', errors)
+            message.nack()
+        else:
+            message.ack()
+            log.info('ack 完了')
+
+
+    def main() -> None:
+        kubernetes.config.load_incluster_config()
+        v1 = kubernetes.client.CoreV1Api()
+
+        subscriber = pubsub_v1.SubscriberClient()
+        sub_path   = subscriber.subscription_path(PROJECT_ID, SUBSCRIPTION)
+
+        log.info('サブスクリプション接続: %s', sub_path)
+
+        future = subscriber.subscribe(
+            sub_path,
+            callback=lambda msg: handle_message(msg, v1),
+            flow_control=pubsub_v1.types.FlowControl(max_messages=1),
+        )
+
+        def _shutdown(sig, _frame):
+            log.info('シャットダウン (signal=%d)', sig)
+            future.cancel()
+            sys.exit(0)
+
+        signal.signal(signal.SIGTERM, _shutdown)
+        signal.signal(signal.SIGINT,  _shutdown)
+
+        log.info('メッセージ待機中...')
+        try:
+            future.result()
+        except Exception as exc:
+            log.error('サブスクライバーエラー: %s', exc)
+            future.cancel()
+            sys.exit(1)
+
+
+    if __name__ == '__main__':
+        main()
+
+---
+# ── Deployment ───────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pubsub-list-subscriber
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: pubsub-list-subscriber
+    app.kubernetes.io/component: pubsub
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pubsub-list-subscriber
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pubsub-list-subscriber
+        app.kubernetes.io/component: pubsub
+    spec:
+      serviceAccountName: pubsub-list-sa
+      initContainers:
+        # pip パッケージを emptyDir にインストール（起動時 1 回のみ）
+        - name: install-packages
+          image: python:3.12-slim
+          command:
+            - pip
+            - install
+            - --quiet
+            - --no-cache-dir
+            - --target=/packages
+            - "google-cloud-pubsub>=2.27,<3"
+            - "kubernetes>=31,<33"
+          volumeMounts:
+            - name: packages
+              mountPath: /packages
+          resources:
+            requests: { memory: "128Mi", cpu: "100m" }
+            limits:   { memory: "256Mi", cpu: "500m" }
+
+      containers:
+        - name: subscriber
+          image: python:3.12-slim
+          command: ["python3", "/scripts/subscriber.py"]
+          env:
+            - name: PYTHONPATH
+              value: /packages
+            - name: GCP_PROJECT_ID
+              value: project-61cf5742-d0ea-45ed-ac0
+            - name: PUBSUB_SUBSCRIPTION
+              value: mc-list-sub
+            # gcs-backup-credentials と同じ user ADC 認証パターン
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /secrets/gcs-key.json
+            - name: CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE
+              value: /secrets/gcs-key.json
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          volumeMounts:
+            - name: packages
+              mountPath: /packages
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: gcp-credentials
+              mountPath: /secrets
+              readOnly: true
+          resources:
+            requests: { memory: "64Mi",  cpu: "10m" }
+            limits:   { memory: "256Mi", cpu: "200m" }
+
+      volumes:
+        - name: packages
+          emptyDir: {}
+        - name: scripts
+          configMap:
+            name: pubsub-list-script-cm
+        - name: gcp-credentials
+          secret:
+            secretName: gcs-backup-credentials
+            items:
+              - key: key.json
+                path: gcs-key.json
