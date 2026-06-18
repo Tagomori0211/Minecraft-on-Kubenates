@@ -1,7 +1,4 @@
-%%{init: {'theme':'base', 'themeVariables': {
-  'fontFamily':'Meiryo, Noto Sans JP, sans-serif',
-  'fontSize':'15px',
-  'clusterBkg':'transparent',
+%%{init: {'theme':'dark', 'themeVariables': {
   'lineColor':'#94a3b8'
 }}}%%
 flowchart TD
@@ -44,9 +41,6 @@ flowchart TD
         end
     end
 
-    %% ───────────── 監視 / バックアップ先 ─────────────
-    Monitoring["📊 監視VM : gce-mc-monitoring<br/>100.121.113.37<br/>VictoriaMetrics + Grafana"]
-    
 
     %% ───────────── データフロー ─────────────
     Player_Java    -->|"25565/TCP"| SocatTCP
@@ -79,9 +73,7 @@ flowchart TD
     class TS_Net tsnet;
     class SvMc,SvMon,SvLog svComp;
     class BdSrv,BdMon bdComp;
-    class BdsBackup,GcsBackup ops;
-    class Monitoring,GCS ext;
-
+    
     style GCE        fill:#dbeafe,color:#1e3a8a,stroke:#2563eb,stroke-width:3px;
     style Compose    fill:#bfdbfe,color:#1e3a8a,stroke:#3b82f6,stroke-width:2px;
     style TS         fill:#ede9fe,color:#4c1d95,stroke:#7c3aed,stroke-width:3px;
