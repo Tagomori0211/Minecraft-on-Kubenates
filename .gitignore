@@ -276,3 +276,6 @@ Terraform/cloud_function_source/mc-log-processor.zip
 
 # Terraform ローカルプラグイン
 Terraform/.terraform/
+
+# query.txt VMqueryの定義
+query.txt

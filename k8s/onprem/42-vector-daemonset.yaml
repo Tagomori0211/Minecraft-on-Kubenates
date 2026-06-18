@@ -1,0 +1,176 @@
+# ============================================================
+# Vector DaemonSet - Minecraft ログ収集 → VictoriaLogs
+# ============================================================
+# minecraft namespace の全 Pod ログを /var/log/pods/ から収集し
+# mc-monitoring-1 (Tailscale 100.121.113.37:9001) の
+# Vector aggregator 経由で VictoriaLogs に転送する。
+#
+# ログフロー:
+#   /var/log/pods/minecraft_*/  (hostPath)
+#     → Vector kubernetes_logs source
+#     → flatten_meta transform  (ラベル整理)
+#     → vector://100.121.113.37:9001  (Tailscale)
+#     → Vector aggregator (monitoring compose)
+#     → VictoriaLogs
+#
+# 既存の mc-log-shipper (Pub/Sub → BigQuery) とは独立。
+# 全文ログ検索・エラー監視を VictoriaLogs で追加提供する。
+# ============================================================
+
+# ── ServiceAccount ───────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vector
+  namespace: monitoring-prometheus
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: log-collector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+
+---
+# ── ClusterRole ──────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vector
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+rules:
+  - apiGroups: [""]
+    resources: [pods, namespaces, nodes]
+    verbs: [get, list, watch]
+
+---
+# ── ClusterRoleBinding ───────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vector
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vector
+subjects:
+  - kind: ServiceAccount
+    name: vector
+    namespace: monitoring-prometheus
+
+---
+# ── ConfigMap (Vector 設定) ──────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-config
+  namespace: monitoring-prometheus
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: log-collector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+data:
+  vector.yaml: |
+    sources:
+      kubernetes_logs:
+        type: kubernetes_logs
+        # minecraft namespace のみ収集（他のシステムログを除外）
+        include_namespaces:
+          - minecraft
+        timezone: Asia/Tokyo
+
+    transforms:
+      flatten_meta:
+        type: remap
+        inputs: [kubernetes_logs]
+        source: |-
+          # Loki ラベル用にメタデータをトップレベルフィールドへ展開
+          # app.kubernetes.io/component ラベルを job として使用
+          .job = get(.kubernetes.pod_labels, ["app.kubernetes.io/component"]) ?? "unknown"
+          .log_container = .kubernetes.container_name ?? "unknown"
+          .log_namespace = .kubernetes.pod_namespace ?? "unknown"
+          .log_pod = .kubernetes.pod_name ?? "unknown"
+
+    sinks:
+      monitoring:
+        type: vector
+        inputs: [flatten_meta]
+        # mc-monitoring-1 の Tailscale IP (vector aggregator port)
+        address: "100.121.113.37:9001"
+        version: "2"
+        buffer:
+          type: memory
+          max_events: 10000
+          # VictoriaLogs が一時停止してもデータロスを最小化
+          when_full: drop_newest
+
+---
+# ── DaemonSet ────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vector
+  namespace: monitoring-prometheus
+  labels:
+    app.kubernetes.io/name: vector
+    app.kubernetes.io/component: log-collector
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vector
+        app.kubernetes.io/component: log-collector
+    spec:
+      serviceAccountName: vector
+      tolerations:
+        - operator: Exists
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: vector
+          image: timberio/vector:0.56.0-debian
+          args: ["--config", "/etc/vector/vector.yaml"]
+          env:
+            - name: VECTOR_SELF_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: VECTOR_LOG
+              value: info
+          volumeMounts:
+            - name: config
+              mountPath: /etc/vector
+              readOnly: true
+            - name: var-log
+              mountPath: /var/log
+              readOnly: true
+            - name: var-lib-docker
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "300m"
+      volumes:
+        - name: config
+          configMap:
+            name: vector-config
+        - name: var-log
+          hostPath:
+            path: /var/log
+        - name: var-lib-docker
+          hostPath:
+            path: /var/lib/docker/containers
