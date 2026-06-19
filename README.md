@@ -67,10 +67,10 @@ Java版・Bedrock版の両対応に加え、**VictoriaMetrics + Grafana によ�
 | サービス | 用途 |
 |---------|------|
 | **GCE: mc-proxy-1** (e2-micro) | socat-tcp（Java 25565）+ socat-bedrock（Bedrock 19132）の透過プロキシ |
-| **GCE: mc-monitoring-1** (e2-small) | VictoriaMetrics + VictoriaLogs + Vector + Grafana + HealthCheck + discord-notifier（Tailscale 経由のみアクセス可） |
+| **GCE: mc-monitoring-1** (e2-small) | VictoriaMetrics + VictoriaLogs + Vector + Grafana + vmalert + Alertmanager + alertmanager-discord + discord-notifier（Tailscale 経由のみアクセス可） |
 | **BigQuery** | メトリクス時系列保存（k3s Pod が 15 秒解像度で INSERT）・課金 Export・コスト按分 VIEW |
 | **Cloud Storage** (Standard) | 月次ワールドバックアップ（lifecycle: 31日 ARCHIVE / 365日削除） |
-| **Pub/Sub** | 課金アラート、オンプレ沈黙検知 |
+| **Pub/Sub** | 課金アラート（GCP Budget イベント駆動） |
 | **Cloud Billing Budget** | 80% / 90% / 100% でTopic配信 |
 | **Secret Manager** | Tailscale auth-key / Discord Webhook URL / Player hash salt |
 | **Proxmox VE** | オンプレミス仮想化基盤（Ryzen 5700G / 64GB） |
@@ -88,6 +88,9 @@ Java版・Bedrock版の両対応に加え、**VictoriaMetrics + Grafana によ�
 | vmagent | `victoriametrics/vmagent:v1.115.0` |
 | VictoriaLogs | `victoriametrics/victoria-logs:v1.24.0-victorialogs` |
 | Vector | `timberio/vector:0.56.0-debian` |
+| vmalert | `victoriametrics/vmalert:v1.115.0` |
+| Alertmanager | `prom/alertmanager:v0.27.0` |
+| Alertmanager→Discord ブリッジ | `benjojo/alertmanager-discord` |
 | Grafana | `grafana/grafana:11.6.1` |
 
 ---
@@ -175,35 +178,31 @@ k3s 内の **BQ 挿入ジョブ Pod** が VictoriaMetrics（1 秒解像度）へ
 - `k8s/onprem/` BQ 挿入ジョブ: stdlib のみ・ADC override（`CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`、SA キー作成禁止 org policy 対応）・`avg_over_time` / `max_over_time` で 15 秒集計
 - BigQuery `gcp_billing_export` × `server_metrics` を JOIN した **`cost_analysis_view`** によりプレイヤー比率で按分したコスト分析が可能（Looker Studio 接続向け）
 
-### 6. Discord 通知統合（Pub/Sub Pull）
+### 6. メトリクスアラート（vmalert + Alertmanager）
 
-Cloud Functions push subscription は Cloudflare の ASN レベルブロック（GCP Functions の IP がブロックリスト掲載）で 403 になるため、**mc-monitoring-1 上の discord-notifier (5 分間隔) が pull する** 構成。
+メトリクス由来のアラートは **vmalert → Alertmanager → Discord** の標準構成に統一。Discord はネイティブ receiver が無く `/slack` 互換は attachment を弾くため、**alertmanager-discord ブリッジ**で Discord ネイティブ embed に変換する。
 
 ```text
-[ Cloud Billing Budget ¥8,000/月 ]
-    │ 80% / 90% / 100% threshold
-    ▼
-[ Pub/Sub: alerts ] ←─── pull (5min) ─── [ mc-monitoring-1: discord-notifier ]
-                                                          │
-                                                          ▼
-                                                   Discord Webhook
-                                              （JPY embed・User-Agent: DiscordBot）
+[ VictoriaMetrics ] ──評価(30s)──▶ [ vmalert ] ──発火──▶ [ Alertmanager :9093 ]
+                                                              │ webhook
+                                                              ▼
+                                               [ alertmanager-discord ] ──▶ Discord embed
+```
+
+- `gce/monitoring/vmalert/rules/minecraft.yml`: `OnpremSilence`（オンプレ沈黙）/ `MinecraftServerDown` / `ScrapeTargetDown` / `TailscaleAuthKeyExpiringSoon`（鍵発行+80日）
+- `gce/monitoring/alertmanager/alertmanager.yml`: `webhook_configs` → ブリッジ。webhook URL は Secret Manager から cloud-init が `.env`（`DISCORD_WEBHOOK`）生成
+- **オンプレ沈黙検知**は旧 HealthCheck コンテナを廃し `OnpremSilence`（`absent(up{location="onprem"}==1)` 5分）ルールへ集約
+
+### 7. 課金アラート（Pub/Sub Pull）
+
+課金（GCP Budget）はメトリクスでなくイベント駆動のため、**mc-monitoring-1 上の discord-notifier (5 分 pull)** が Pub/Sub から取得して Discord 通知する（vmalert 対象外）。Cloud Functions push は Cloudflare の ASN ブロックで 403 になるため pull 構成。
+
+```text
+[ Cloud Billing Budget ¥8,000/月 ] ─80/90/100%─▶ [ Pub/Sub ] ◀─pull(5min)─ [ discord-notifier ] ─▶ Discord
 ```
 
 - `Terraform/notifications.tf`: Pub/Sub topic + pull subscription + Budget + Secret Manager
-- `discord-notifier`: stdlib のみ・`alertThresholdExceeded == 0` のメタメッセージはスキップ
 - 月次バックアップ完了時にも `gcs-backup-cronjob` が **署名付き URL（7日有効）** 付き embed を Discord に送信
-
-### 7. オンプレ沈黙検知（HealthCheck）
-
-mc-monitoring-1 上の **HealthCheck コンテナ**（5 分間隔）が VictoriaMetrics へクエリを発行し、オンプレ k3s からのメトリクスが途絶（クエリ失敗）した場合に Pub/Sub 経由で Discord へ「オンプレ沈黙アラート」を送出する。
-
-```text
-[ mc-monitoring-1: HealthCheck ] ─ 5分間隔クエリ ─▶ [ VictoriaMetrics ]
-        │ クエリ失敗（オンプレ沈黙）
-        ▼
-[ Pub/Sub: alerts ] ─▶ [ discord-notifier ] ─▶ Discord「オンプレ沈黙アラート」
-```
 
 ### 8. GCS Standard バックアップ
 
@@ -304,7 +303,8 @@ Secret Manager で以下を管理:
 
 - VictoriaLogs + Vector ログ収集パイプライン追加（minecraft namespace のログを Grafana へ集約）
 - メトリクス収集を 1 秒解像度へ・BigQuery 集積を k3s Pod（15 秒解像度）へ再設計
-- discord-notifier / HealthCheck（オンプレ沈黙検知）を mc-monitoring-1 へ集約
+- mc-proxy を autohealing MIG 化（TCP:25565 ヘルスチェック・静的IP 維持）
+- メトリクスアラートを vmalert + Alertmanager + alertmanager-discord に統一（オンプレ沈黙は vmalert ルール化、課金は Pub/Sub 継続）
 
 ### 🔲 今後
 

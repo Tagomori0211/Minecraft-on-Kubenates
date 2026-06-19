@@ -14,8 +14,10 @@ flowchart LR
         VLogs["VictoriaLogs<br>9428 / 保持 30日"]
         VectorAgg["Vector Aggregator<br>:9001"]
         Grafana["Grafana<br>(アクセスはTailscale経由のみ)"]
-        HealthCheck["HealthCheck Container<br>5分間隔VMクエリ発行"]
-        Alert_Job["discord-notifier<br>5分間隔"]
+        VMAlert["vmalert<br>ルール評価 30s<br>沈黙/Down/scrape/鍵期限"]
+        AM["Alertmanager<br>:9093"]
+        AMD["alertmanager-discord<br>ブリッジ"]
+        Alert_Job["discord-notifier<br>課金 5分pull"]
     end
 
     subgraph GCP_Svc["GCP マネージドサービス"]
@@ -36,15 +38,16 @@ flowchart LR
     VLogs --> Grafana
     Grafana --> Admin
 
-    HealthCheck -->|5分間隔クエリ| VM
-    HealthCheck -->|クエリ失敗| PubSub
+    VM -->|ルール評価| VMAlert
+    VMAlert -->|発火| AM
+    AM -->|webhook| AMD
+    AMD -->|Discord embed| Discord
 
     Budget --> PubSub
-    PubSub -->|アラート| Alert_Job
+    PubSub -->|課金アラート| Alert_Job
     BQ_Job -->|15s insert| BQ
 
     Alert_Job -->|課金超過アラート| Discord
-    Alert_Job -->|オンプレ沈黙アラート| Discord
 
     style K3s        fill:#C62828,color:#fff
     style MC_Pods    fill:#424242,color:#fff,stroke:#f87171
@@ -56,7 +59,9 @@ flowchart LR
     style VectorAgg  fill:#08b3a6,color:#fff
     style Grafana    fill:#f46800,color:#fff
     style BQ_Job     fill:#4285F4,color:#fff
-    style HealthCheck fill:#7F52FF,color:#fff
+    style VMAlert    fill:#e6522c,color:#fff
+    style AM         fill:#e6522c,color:#fff
+    style AMD        fill:#5865F2,color:#fff
     style Alert_Job  fill:#7F52FF,color:#fff
     style GCP_Svc    fill:#2962FF,color:#fff,stroke:#82B1FF
     style BQ         fill:#123564,color:#fff
