@@ -130,7 +130,7 @@ services:
   # ── Alertmanager → Discord ブリッジ（AM webhook を Discord embed に変換）──
   # DISCORD_WEBHOOK は compose の .env（cloud-init が Secret Manager から生成）から注入。
   alertmanager-discord:
-    image: rogerrum/alertmanager-discord:1.1.0
+    image: rogerrum/alertmanager-discord:1.0.7
     container_name: alertmanager-discord
     restart: unless-stopped
     environment:
