@@ -56,30 +56,33 @@ resource "google_project_iam_member" "mc_proxy_secret_access" {
 }
 
 # ============================================================
-# GCE VM: mc-proxy-1
+# GCE: mc-proxy インスタンステンプレート + オートヒーリング MIG
 # ============================================================
-resource "google_compute_instance" "mc_proxy" {
-  name = "mc-proxy-1"
-  # socat-tcp/socat-bedrock の薄いプロキシのみ稼働するため e2-micro へ downsize。
-  # ⚠️ apply 時は実機でメモリ（tailscaled + Docker + socat×2、1GB swap 併用）を要検証。
+# 単体 VM を Managed Instance Group (zonal, size=1) 化し、
+# TCP:25565 ヘルスチェックで自動復旧（autohealing）を有効化する。
+# 静的IP 35.200.78.252 は stateful_external_ip + テンプレート nat_ip で維持。
+#
+# ⚠️ 既存単体 VM (mc-proxy-1) は destroy され MIG 管理インスタンス
+#    (mc-proxy-xxxx) として再作成される（= 入口ダウンタイム数分）。
+#    インスタンス名が変わるため `mc-proxy-1` を直指定する SSH 手順は要更新。
+# ============================================================
+
+resource "google_compute_instance_template" "mc_proxy" {
+  name_prefix = "mc-proxy-"
+  # socat-tcp/socat-bedrock の薄いプロキシのみ稼働するため e2-micro。
   machine_type = "e2-micro"
-  zone         = var.zone
   tags         = ["minecraft", "tailscale"]
 
-  # 起動時 cloud-init の完了を待ちたいため停止可
-  allow_stopping_for_update = true
-
-  boot_disk {
-    initialize_params {
-      image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"
-      size  = 20
-      type  = "pd-balanced"
-    }
+  disk {
+    source_image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"
+    disk_size_gb = 20
+    disk_type    = "pd-balanced"
+    boot         = true
+    auto_delete  = true
   }
 
   network_interface {
     subnetwork = google_compute_subnetwork.tak_subnet.name
-
     access_config {
       nat_ip = google_compute_address.minecraft_ip.address
     }
@@ -102,11 +105,63 @@ resource "google_compute_instance" "mc_proxy" {
 
   labels = local.common_labels
 
-  # IP 切替時は VM 再作成を避けたい
+  # テンプレート差し替え時に新テンプレートを先に作成
   lifecycle {
-    ignore_changes = [
-      metadata["ssh-keys"],
-    ]
+    create_before_destroy = true
+  }
+}
+
+# autohealing 用 TCP ヘルスチェック（socat が 25565 を LISTEN していれば healthy）
+# GCP ヘルスチェッカ (35.191.0.0/16 / 130.211.0.0/22) は既存 minecraft_tcp
+# (0.0.0.0/0 → 25565) で到達可能なため追加 FW 不要。
+resource "google_compute_health_check" "mc_proxy_tcp" {
+  name                = "mc-proxy-25565-hc"
+  check_interval_sec  = 30
+  timeout_sec         = 10
+  healthy_threshold   = 2
+  unhealthy_threshold = 3
+
+  tcp_health_check {
+    port = 25565
+  }
+
+  log_config {
+    enable = true
+  }
+}
+
+resource "google_compute_instance_group_manager" "mc_proxy" {
+  name               = "mc-proxy-mig"
+  base_instance_name = "mc-proxy"
+  zone               = var.zone
+  target_size        = 1
+
+  version {
+    instance_template = google_compute_instance_template.mc_proxy.id
+  }
+
+  named_port {
+    name = "minecraft"
+    port = 25565
+  }
+
+  auto_healing_policies {
+    health_check = google_compute_health_check.mc_proxy_tcp.id
+    # cloud-init + Docker + Tailscale + socat 起動の猶予（誤検知での kill ループ防止）
+    initial_delay_sec = 300
+  }
+
+  # 静的IP をインスタンス再作成をまたいで維持
+  stateful_external_ip {
+    interface_name = "nic0"
+    delete_rule    = "ON_PERMANENT_INSTANCE_DELETION"
+  }
+
+  update_policy {
+    type                  = "PROACTIVE"
+    minimal_action        = "REPLACE"
+    max_surge_fixed       = 0
+    max_unavailable_fixed = 1
   }
 
   depends_on = [
@@ -118,11 +173,11 @@ resource "google_compute_instance" "mc_proxy" {
 # Outputs
 # ============================================================
 output "mc_proxy_external_ip" {
-  description = "GCE Minecraft Proxy VM external IP (ephemeral until Phase 3)"
-  value       = google_compute_instance.mc_proxy.network_interface[0].access_config[0].nat_ip
+  description = "GCE Minecraft Proxy 静的外部IP（MIG 管理・stateful 維持）"
+  value       = google_compute_address.minecraft_ip.address
 }
 
-output "mc_proxy_internal_ip" {
-  description = "GCE Minecraft Proxy VM internal IP"
-  value       = google_compute_instance.mc_proxy.network_interface[0].network_ip
+output "mc_proxy_mig" {
+  description = "mc-proxy Managed Instance Group 名"
+  value       = google_compute_instance_group_manager.mc_proxy.name
 }
