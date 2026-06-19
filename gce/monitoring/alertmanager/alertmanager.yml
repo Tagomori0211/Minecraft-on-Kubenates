@@ -1,0 +1,31 @@
+# ============================================================
+# Alertmanager 設定（vmalert → Alertmanager → Discord）
+# ============================================================
+# Discord はネイティブ receiver が無いため、slack_configs の api_url を
+# Discord webhook の Slack 互換エンドポイント（末尾に /slack）へ向ける。
+# webhook URL は機密のため api_url_file 経由（cloud-init が Secret Manager
+# mc-discord-webhook-url を取得し /slack を付与してファイル化）。
+# ============================================================
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: discord
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: discord
+    slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/discord_slack_url
+        # Discord /slack では channel は無視されるが slack_config の必須項目
+        channel: "minecraft-alerts"
+        send_resolved: true
+        title: '{{ if eq .Status "firing" }}🚨{{ else }}✅{{ end }} [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+        text: >-
+          {{ range .Alerts -}}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}

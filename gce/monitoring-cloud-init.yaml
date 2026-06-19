@@ -94,6 +94,11 @@ runcmd:
   - cp -r /tmp/repo/gce/monitoring/. /opt/mc-monitoring/
   - rm -rf /tmp/repo
 
+  # Alertmanager 用 Discord webhook(/slack) ファイルを Secret Manager から生成
+  - mkdir -p /opt/mc-monitoring/alertmanager/secrets
+  - bash -c 'printf "%s/slack" "$(gcloud secrets versions access latest --secret=mc-discord-webhook-url)" > /opt/mc-monitoring/alertmanager/secrets/discord_slack_url'
+  - chmod 600 /opt/mc-monitoring/alertmanager/secrets/discord_slack_url
+
   # Docker Compose で起動
   - docker compose -f /opt/mc-monitoring/compose.yaml up -d
 

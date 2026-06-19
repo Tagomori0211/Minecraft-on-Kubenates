@@ -82,8 +82,9 @@ services:
       victoria-metrics:
         condition: service_healthy
 
-  # ── Discord 通知（課金アラート + オンプレ沈黙アラートを Pull → Discord）──
-  # mc-proxy-1 の systemd から移設。GCE メタデータ ADC（mc-monitoring-sa）を使うため host network。
+  # ── Discord 通知（課金アラートのみ。GCP Budget→Pub/Sub のイベント駆動分）──
+  # メトリクス系アラート（沈黙/Down 等）は vmalert + Alertmanager へ移行。
+  # GCE メタデータ ADC（mc-monitoring-sa）を使うため host network。
   discord-notifier:
     image: google/cloud-sdk:slim
     container_name: discord-notifier
@@ -93,23 +94,40 @@ services:
       - ./scripts/discord-notifier.py:/scripts/discord-notifier.py:ro
     command: ["python3", "/scripts/discord-notifier.py"]
 
-  # ── オンプレ沈黙検知（VM をクエリし途絶時に Pub/Sub へ publish）──
-  healthcheck:
-    image: google/cloud-sdk:slim
-    container_name: healthcheck
+  # ── vmalert（VictoriaMetrics に対しルール評価 → Alertmanager へ発火）──
+  vmalert:
+    image: victoriametrics/vmalert:v1.115.0
+    container_name: vmalert
     restart: unless-stopped
-    network_mode: host
-    environment:
-      # host network のためローカル VM は 127.0.0.1:8428
-      - VM_URL=http://127.0.0.1:8428
     volumes:
-      - ./scripts/healthcheck.py:/scripts/healthcheck.py:ro
-    command: ["python3", "/scripts/healthcheck.py"]
+      - ./vmalert/rules:/etc/vmalert/rules:ro
+    command:
+      - "-datasource.url=http://victoria-metrics:8428"
+      - "-remoteWrite.url=http://victoria-metrics:8428"
+      - "-notifier.url=http://alertmanager:9093"
+      - "-rule=/etc/vmalert/rules/*.yml"
+      - "-evaluationInterval=30s"
     depends_on:
       victoria-metrics:
         condition: service_healthy
+      alertmanager:
+        condition: service_started
+
+  # ── Alertmanager（slack_configs → Discord /slack エンドポイント）──
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager/secrets:/etc/alertmanager/secrets:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
 
 volumes:
   victoria-metrics-data:
   victoria-logs-data:
   grafana-data:
+  alertmanager-data:

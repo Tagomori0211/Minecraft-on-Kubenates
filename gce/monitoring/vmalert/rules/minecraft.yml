@@ -1,0 +1,44 @@
+groups:
+  - name: minecraft-infra
+    # vmalert が VictoriaMetrics(:8428) に対して評価し、発火を Alertmanager へ送る
+    rules:
+      # ── オンプレ沈黙（旧 healthcheck コンテナの置き換え）──
+      - alert: OnpremSilence
+        expr: absent(up{location="onprem"} == 1)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "オンプレ k3s 沈黙を検知"
+          description: "5分以上 onprem メトリクスが途絶しています（vmagent / k3s / Tailscale 障害の可能性）。"
+
+      # ── Minecraft サーバー異常 ──
+      - alert: MinecraftServerDown
+        expr: minecraft_status_healthy == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Minecraft {{ $labels.component }} が unhealthy"
+          description: "{{ $labels.component }} が5分以上 healthy=0（バックアップ等の計画停止を除き要確認）。"
+
+      # ── scrape ターゲット停止 ──
+      - alert: ScrapeTargetDown
+        expr: up{location="onprem"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "scrape ターゲット down: {{ $labels.job }}"
+          description: "{{ $labels.instance }} ({{ $labels.job }}) の scrape が5分以上失敗しています。"
+
+      # ── Tailscale auth-key 失効間近 ──
+      # ⚠️ 鍵ローテ時は下記 epoch を更新（発行+80日 = 失効10日前）。
+      #    2026-06-19 発行 / 90日失効 → 1788739200 (2026-09-07) で発火。
+      - alert: TailscaleAuthKeyExpiringSoon
+        expr: time() > 1788739200
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tailscale auth-key 失効間近（発行+80日経過）"
+          description: "Secret Manager tailscale-auth-key を再ローテしてください。失効すると autoheal/再作成インスタンスが Tailscale に参加できず入口が停止します。"

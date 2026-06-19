@@ -102,14 +102,9 @@ resource "google_pubsub_subscription_iam_member" "mc_monitoring_billing_subscrib
   member       = "serviceAccount:${google_service_account.mc_monitoring_sa.email}"
 }
 
-# mc-monitoring-sa に Publisher 権限を付与
-# （HealthCheck がオンプレ沈黙アラートを billing-alerts topic へ publish する）
-resource "google_pubsub_topic_iam_member" "mc_monitoring_billing_publisher" {
-  project = var.project_id
-  topic   = google_pubsub_topic.billing_alerts.name
-  role    = "roles/pubsub.publisher"
-  member  = "serviceAccount:${google_service_account.mc_monitoring_sa.email}"
-}
+# NOTE: オンプレ沈黙検知は vmalert(OnpremSilence) + Alertmanager へ移行したため
+#       mc-monitoring-sa の Pub/Sub publisher 付与は廃止（discord-notifier は
+#       課金アラートの subscriber のみ必要）。
 
 # ============================================================
 # Billing Budget (90% + 100%)

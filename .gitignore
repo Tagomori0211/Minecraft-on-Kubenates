@@ -252,6 +252,9 @@ scripts/
 !gce/scripts/
 !gce/monitoring/scripts/
 
+# Alertmanager の Discord webhook(/slack) ファイルは Secret Manager から生成（機密）
+gce/monitoring/alertmanager/secrets/
+
 # Tasks
 Task_mds/
 
