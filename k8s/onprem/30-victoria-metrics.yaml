@@ -40,20 +40,12 @@ data:
 
     scrape_configs:
       # ── Minecraft サーバー（ClusterIP DNS 名）─────────────────
-      - job_name: 'lobby'
-        static_configs:
-          - targets: ['svc-lobby.minecraft.svc.cluster.local:8080']
-            labels: { location: onprem, component: lobby }
-
+      # lobby / mod は撤去済み（deploy-survival 統合・mermaid 準拠）。
+      # 現行は survival（NeoForge 統合）+ bedrock のみ。
       - job_name: 'survival'
         static_configs:
           - targets: ['svc-survival.minecraft.svc.cluster.local:8080']
             labels: { location: onprem, component: survival }
-
-      - job_name: 'mod'
-        static_configs:
-          - targets: ['svc-mod.minecraft.svc.cluster.local:8080']
-            labels: { location: onprem, component: mod }
 
       - job_name: 'bedrock'
         static_configs:
