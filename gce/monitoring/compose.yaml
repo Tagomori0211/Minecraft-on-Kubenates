@@ -113,18 +113,29 @@ services:
       alertmanager:
         condition: service_started
 
-  # ── Alertmanager（slack_configs → Discord /slack エンドポイント）──
+  # ── Alertmanager（webhook → alertmanager-discord ブリッジ）──
   alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: alertmanager
     restart: unless-stopped
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-      - ./alertmanager/secrets:/etc/alertmanager/secrets:ro
       - alertmanager-data:/alertmanager
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
+    depends_on:
+      - alertmanager-discord
+
+  # ── Alertmanager → Discord ブリッジ（AM webhook を Discord embed に変換）──
+  # DISCORD_WEBHOOK は compose の .env（cloud-init が Secret Manager から生成）から注入。
+  alertmanager-discord:
+    image: rogerrum/alertmanager-discord:1.1.0
+    container_name: alertmanager-discord
+    restart: unless-stopped
+    environment:
+      - DISCORD_WEBHOOK=${DISCORD_WEBHOOK}
+      - DISCORD_USERNAME=mc-alertmanager
 
 volumes:
   victoria-metrics-data:
