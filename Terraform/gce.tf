@@ -151,12 +151,10 @@ resource "google_compute_instance_group_manager" "mc_proxy" {
     initial_delay_sec = 300
   }
 
-  # 静的IP をインスタンス再作成をまたいで維持
-  stateful_external_ip {
-    interface_name = "nic0"
-    delete_rule    = "ON_PERMANENT_INSTANCE_DELETION"
-  }
-
+  # 静的IP 35.200.78.252 はテンプレートの access_config.nat_ip で付与する。
+  # （stateful_external_ip を併用すると初回作成時に nat_ip が無視され ephemeral
+  #   が割り当たる不具合があったため不使用。size=1 のため autoheal の
+  #   delete→create で予約IPは解放後に再アタッチされる。）
   update_policy {
     type                  = "PROACTIVE"
     minimal_action        = "REPLACE"
