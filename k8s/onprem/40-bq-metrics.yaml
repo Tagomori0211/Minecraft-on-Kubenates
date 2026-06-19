@@ -1,0 +1,211 @@
+# ============================================================
+# TAK Pipeline - BQ メトリクス挿入ジョブ（k3s 常駐 Pod）
+# ============================================================
+# 監視系再構築（mermaid=真）に伴い、旧 mc-proxy-1 の systemd timer
+# (bq-metrics.timer / insert_metrics.py) を k3s 内 Deployment へ移設。
+#
+#   VictoriaMetrics(1s 解像度) → 本Pod → 15秒解像度で BigQuery へ INSERT
+#
+# 認証: gcs-backup-cronjob と同じ cred-file パターンを再利用。
+#   - Secret `gcs-backup-credentials`（authorized_user ADC, key.json）
+#   - CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE で gcloud/bq に渡す
+#   - CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT=mc-proxy-sa で実行
+#     （mc-proxy-sa は Terraform で BigQuery dataEditor 付与済み）
+#
+# ⚠️ apply 前提（手動確認）:
+#   - cred-file の principal が mc-proxy-sa に serviceAccountTokenCreator を持つこと
+#     （Terraform/notifications.tf で terraform_executor に付与済みの委譲を再利用）
+#   - VictoriaMetrics へは Tailscale IP 100.121.113.37:8428 で到達（vmagent と同経路）
+# ============================================================
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bq-metrics-sa
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: bq-metrics
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bq-metrics-script-cm
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: bq-metrics
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+data:
+  insert_metrics.py: |
+    #!/usr/bin/env python3
+    """
+    VictoriaMetrics(1s 解像度) を 15秒解像度にサンプリングして BigQuery へ INSERT する。
+
+    実行環境: k3s minecraft namespace の常駐 Pod (google/cloud-sdk:slim)
+    認証: gcs-backup と同じ cred-file（CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE）
+          + mc-proxy-sa インパーソネート（BigQuery dataEditor）
+    """
+    import json
+    import os
+    import subprocess
+    import tempfile
+    import time
+    import urllib.parse
+    import urllib.request
+    from datetime import datetime, timezone
+
+    # GCE mc-monitoring-1 VictoriaMetrics (Tailscale 経由・vmagent と同じ宛先)
+    VM_URL = os.environ.get("VM_URL", "http://100.121.113.37:8428")
+    BQ_PROJECT = os.environ.get("CLOUDSDK_CORE_PROJECT", "")
+    BQ_TABLE = os.environ.get("BQ_TABLE", "minecraft_monitoring.server_metrics")
+    # 挿入間隔（秒）。mermaid 設計値 = 15秒解像度。
+    SAMPLE_INTERVAL = int(os.environ.get("SAMPLE_INTERVAL_SEC", "15"))
+
+    # minecraft_status_* から 15 秒平均/最大/最小を PromQL で集計する
+    METRICS = [
+        "avg_over_time(minecraft_status_players_online_count{server_edition='java'}[15s])",
+        "max_over_time(minecraft_status_players_online_count{server_edition='java'}[15s])",
+        "avg_over_time(minecraft_status_response_time_seconds{server_edition='java'}[15s])",
+        "min_over_time(minecraft_status_healthy{server_edition='java'}[15s])",
+    ]
+    METRIC_NAMES = [
+        "mc:players_online:avg15s",
+        "mc:players_online:max15s",
+        "mc:response_time_seconds:avg15s",
+        "mc:healthy:min15s",
+    ]
+
+
+    def query_vm(metric: str) -> list:
+        url = f"{VM_URL}/api/v1/query?query={urllib.parse.quote(metric)}"
+        try:
+            with urllib.request.urlopen(url, timeout=10) as resp:
+                return json.loads(resp.read()).get("data", {}).get("result", [])
+        except Exception as e:
+            print(f"[WARN] VM query failed for {metric}: {e}", flush=True)
+            return []
+
+
+    def collect_and_insert() -> None:
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        rows = []
+        for expr, metric_name in zip(METRICS, METRIC_NAMES):
+            for r in query_vm(expr):
+                server = r["metric"].get("component", "unknown")
+                raw = r.get("value", [None, None])[1]
+                if raw is None or raw == "NaN":
+                    continue
+                rows.append({
+                    "timestamp": ts,
+                    "player_hash": None,
+                    "server": server,
+                    "metric_name": metric_name,
+                    "value": float(raw),
+                })
+
+        if not rows:
+            print(f"[{ts}] no rows (servers down?)", flush=True)
+            return
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            for row in rows:
+                f.write(json.dumps(row) + "\n")
+            tmpfile = f.name
+        try:
+            proc = subprocess.run(
+                ["bq", "insert", f"--project_id={BQ_PROJECT}", BQ_TABLE, tmpfile],
+                capture_output=True, text=True,
+            )
+            if proc.returncode != 0:
+                print(f"[ERROR] bq insert failed: {proc.stderr}", flush=True)
+            else:
+                print(f"[{ts}] inserted {len(rows)} rows → {BQ_PROJECT}:{BQ_TABLE}", flush=True)
+        finally:
+            os.unlink(tmpfile)
+
+
+    def main() -> None:
+        print(f"bq-metrics loop start (interval={SAMPLE_INTERVAL}s, VM={VM_URL})", flush=True)
+        while True:
+            start = time.monotonic()
+            try:
+                collect_and_insert()
+            except Exception as e:
+                print(f"[ERROR] iteration failed: {e}", flush=True)
+            # ドリフトを抑えて SAMPLE_INTERVAL 周期を維持
+            time.sleep(max(0, SAMPLE_INTERVAL - (time.monotonic() - start)))
+
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bq-metrics
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: bq-metrics
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bq-metrics
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bq-metrics
+        app.kubernetes.io/component: monitoring
+    spec:
+      serviceAccountName: bq-metrics-sa
+      containers:
+        - name: bq-metrics
+          image: google/cloud-sdk:slim
+          command: ["python3", "/scripts/insert_metrics.py"]
+          env:
+            - name: VM_URL
+              value: "http://100.121.113.37:8428"
+            - name: SAMPLE_INTERVAL_SEC
+              value: "15"
+            - name: BQ_TABLE
+              value: "minecraft_monitoring.server_metrics"
+            # cred-file 認証（gcs-backup と同一 Secret を再利用）
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /secrets/gcs-key.json
+            - name: CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE
+              value: /secrets/gcs-key.json
+            - name: CLOUDSDK_CORE_PROJECT
+              value: project-61cf5742-d0ea-45ed-ac0
+            # mc-proxy-sa を借用して BigQuery dataEditor 権限で INSERT
+            - name: CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT
+              value: mc-proxy-sa@project-61cf5742-d0ea-45ed-ac0.iam.gserviceaccount.com
+          resources:
+            requests: { memory: "128Mi", cpu: "50m" }
+            limits:   { memory: "256Mi", cpu: "300m" }
+          volumeMounts:
+            - name: script-volume
+              mountPath: /scripts
+              readOnly: true
+            - name: gcs-credentials
+              mountPath: /secrets
+              readOnly: true
+      volumes:
+        - name: script-volume
+          configMap:
+            name: bq-metrics-script-cm
+            defaultMode: 0755
+        - name: gcs-credentials
+          secret:
+            secretName: gcs-backup-credentials
+            items:
+              - key: key.json
+                path: gcs-key.json

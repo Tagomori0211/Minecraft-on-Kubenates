@@ -36,7 +36,7 @@ metadata:
 data:
   vmagent.yml: |-
     global:
-      scrape_interval: 15s
+      scrape_interval: 1s
 
     scrape_configs:
       # ── Minecraft サーバー（ClusterIP DNS 名）─────────────────

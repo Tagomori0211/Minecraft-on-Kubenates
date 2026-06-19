@@ -106,12 +106,11 @@ runcmd:
   - install -m 0755 /opt/mc-proxy/systemd/fetch-secrets.sh /usr/local/bin/fetch-secrets.sh
 
   # systemd unit 配置
+  # NOTE: BQ メトリクス挿入は監視系再構築で k3s Deployment (k8s/onprem/40-bq-metrics.yaml) へ移設済み。
+  #       mc-proxy では socat プロキシ (mc-proxy.service) のみ稼働する。
   - install -m 0644 /opt/mc-proxy/systemd/mc-proxy.service /etc/systemd/system/mc-proxy.service
-  - install -m 0644 /opt/mc-proxy/systemd/bq-metrics.service /etc/systemd/system/bq-metrics.service
-  - install -m 0644 /opt/mc-proxy/systemd/bq-metrics.timer /etc/systemd/system/bq-metrics.timer
   - systemctl daemon-reload
   - systemctl enable --now mc-proxy.service
-  - systemctl enable --now bq-metrics.timer
 
   # 起動確認ログ
   - sleep 30

@@ -20,7 +20,7 @@
 
 作業開始時に以下を必ず参照すること:
 - `.agents/workflows/project_context.md` — アーキテクチャ・接続フロー・既知の問題・運用ルールの全体概要
-- `Documents/architecture/infrastructure.mermaid` — インフラ構成図
+- `Documents/Mermaids/infrastructure.mermaid` — インフラ構成図
 - `gce/README.md` — GCE 側の構成詳細
 - 明確な指示がない限り、`Task_mds` ディレクトリは無視する
 
@@ -196,7 +196,7 @@ sleep+300s 経過しても進展がない場合、以下を自動実施:
 
 ## 🗂️ `documents/` ディレクトリの凡例
 
-- `architecture/` — アーキテクチャ図（Mermaid / SVG）
+- `Mermaids/` — アーキテクチャ図（Mermaid / SVG）
 - `OperationPostmortem/` — インシデントポストモーテム（障害記録）
 - `README/` — 技術ドキュメント・ガイド
 - 新規ドキュメント追加時は適切なサブディレクトリに配置すること

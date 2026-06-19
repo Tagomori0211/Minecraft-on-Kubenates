@@ -18,7 +18,7 @@ Minecraftマルチサーバーを **GCE + オンプレミス k3s** のハイブ�
 
 ## 🏗️ システムアーキテクチャ
 
-![infrastructure](./architecture/infrastructure.svg)
+![infrastructure](../Mermaids/infrastructure.svg)
 
 ### コンポーネント一覧
 
@@ -211,7 +211,7 @@ sequenceDiagram
 │
 └── Documents/                    # ドキュメント
     ├── README/                   # Wiki ホーム・ガイド
-    ├── architecture/             # Mermaid ダイアグラム
+    ├── Mermaids/                 # Mermaid ダイアグラム
     ├── OperationPostmortem/      # 障害振り返り
     └── Task_mds/                 # 作業手順書
 ```

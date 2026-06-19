@@ -1,0 +1,66 @@
+
+flowchart LR
+    subgraph K3s["k3s-worker VM (オンプレ)"]
+        MC_Pods["Minecraft Pods (ClusterIP :8080)<br>minecraft-exporter<br>Java:survival / BE:bedrock"]
+        VMAgent["vmagent<br>収集エージェント<br>scrape間隔 1s"]
+        BQ_Job["BQ挿入ジョブPod<br>VMへクエリ<br>15s解像度でサンプリング挿入"]
+        VectorDS["Vector DaemonSet<br>minecraft namespace<br>Podログ読取"]
+        MC_Pods -->|scrape| VMAgent
+        MC_Pods -.->|ログ| VectorDS
+    end
+
+    subgraph GCE_Mon["GCE: mc-monitoring-1 (e2-small)<br>Docker-compose"]
+        VM["VictoriaMetrics<br>8428 / 保持 14日<br>(長期は BQ)"]
+        VLogs["VictoriaLogs<br>9428 / 保持 30日"]
+        VectorAgg["Vector Aggregator<br>:9001"]
+        Grafana["Grafana<br>(アクセスはTailscale経由のみ)"]
+        HealthCheck["HealthCheck Container<br>5分間隔VMクエリ発行"]
+        Alert_Job["discord-notifier<br>5分間隔"]
+    end
+
+    subgraph GCP_Svc["GCP マネージドサービス"]
+        PubSub["Pub/Sub<br>alerts<br>(pull subscription)"]
+        Budget["課金予算アラート<br>80%/90%/100%発火"]
+        BQ[("BigQuery<br>minecraft_monitoring<br>server_metrics")]
+    end
+
+    Admin["🔧 管理者"]
+    Discord["💬 Discord"]
+
+    VMAgent -->|remote_write| VM
+    VM --> Grafana
+    VM --> BQ_Job
+
+    VectorDS -->|Tailscale :9001| VectorAgg
+    VectorAgg -->|Loki API push| VLogs
+    VLogs --> Grafana
+    Grafana --> Admin
+
+    HealthCheck -->|5分間隔クエリ| VM
+    HealthCheck -->|クエリ失敗| PubSub
+
+    Budget --> PubSub
+    PubSub -->|アラート| Alert_Job
+    BQ_Job -->|15s insert| BQ
+
+    Alert_Job -->|課金超過アラート| Discord
+    Alert_Job -->|オンプレ沈黙アラート| Discord
+
+    style K3s        fill:#C62828,color:#fff
+    style MC_Pods    fill:#424242,color:#fff,stroke:#f87171
+    style VMAgent    fill:#e6522c,color:#fff
+    style VectorDS   fill:#08b3a6,color:#fff
+    style GCE_Mon    fill:#0F9D58,color:#fff,stroke:#fff,stroke-width:2px
+    style VM         fill:#e6522c,color:#fff
+    style VLogs      fill:#a259ff,color:#fff
+    style VectorAgg  fill:#08b3a6,color:#fff
+    style Grafana    fill:#f46800,color:#fff
+    style BQ_Job     fill:#4285F4,color:#fff
+    style HealthCheck fill:#7F52FF,color:#fff
+    style Alert_Job  fill:#7F52FF,color:#fff
+    style GCP_Svc    fill:#2962FF,color:#fff,stroke:#82B1FF
+    style BQ         fill:#123564,color:#fff
+    style PubSub     fill:#E65100,color:#fff
+    style Budget     fill:#F57F17,color:#fff
+    style Admin      fill:#37474F,color:#fff
+    style Discord    fill:#5865F2,color:#fff

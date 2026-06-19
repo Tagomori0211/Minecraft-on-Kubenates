@@ -8,7 +8,7 @@ flowchart TD
     Player_Bedrock["🪨 Bedrock版プレイヤー<br/><b>19132/UDP</b>"]
 
     %% ───────────── GCE エントランス ─────────────
-    subgraph GCE["☁️ GCE エントランス : mc-proxy-1 (e2-medium / asia-northeast1-b)<br/>静的IP 35.200.78.252"]
+    subgraph GCE["☁️ GCE エントランス : mc-proxy-1 (e2-micro / asia-northeast1-b)<br/>静的IP 35.200.78.252"]
         direction TB
         subgraph Compose["🐳 Docker Compose — host network"]
             SocatTCP["socat-tcp<br/>TCP4-LISTEN:25565,fork<br/>→ 100.107.122.45:30065"]

@@ -178,7 +178,7 @@ cython_debug/
 # Context and Documentation
 sushiski-infra-context.md
 session-context.md
-Documents/architecture/roadmap.mermaid
+Documents/Mermaids/roadmap.mermaid
 
 
 # GKE / Cloud Secrets
@@ -247,9 +247,10 @@ k8s/onprem/onprem_*
 # Large files
 world.zip
 
-# Scripts (gce/scripts/ は BQ insert スクリプトを含むため例外)
+# Scripts (gce/scripts/ ・gce/monitoring/scripts/ は運用スクリプトを含むため例外)
 scripts/
 !gce/scripts/
+!gce/monitoring/scripts/
 
 # Tasks
 Task_mds/

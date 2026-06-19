@@ -31,7 +31,7 @@ output "cost_estimation_info" {
   value = {
     region         = var.region
     cluster_type   = "n/a (GKE 廃止済み)"
-    proxy_node     = "e2-medium (GCE / Docker Compose)"
+    proxy_node     = "e2-micro (GCE / Docker Compose: socat-tcp + socat-bedrock)"
     nat_enabled    = false
     static_ip      = true
     estimated_note = "GKE → GCE 移行完了（2026-05-03）。月額 ¥19,700 → ¥3,680 に削減（81%減）。"

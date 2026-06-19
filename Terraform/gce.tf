@@ -3,10 +3,11 @@
 # ============================================================
 # 移行目的:
 #   GKE Standard を GCE 単一 VM に置換し、月額 ¥19,700 → ¥3,680 へ削減（81%減）
-#   ホームIP遮蔽の役割は VM が引き継ぎ、Velocity と nginx-stream を Docker Compose で運用
+#   ホームIP遮蔽の役割は VM が引き継ぎ、socat-tcp / socat-bedrock を Docker Compose で運用
+#   （Velocity / nginx-stream は撤去済み。Java も socat-tcp で NodePort 直結）
 #
 # 構成:
-#   - e2-medium / asia-northeast1-b
+#   - e2-micro / asia-northeast1-b（薄い socat プロキシのため再構築で e2-medium から downsize）
 #   - Ubuntu 24.04 LTS / pd-balanced 20GB
 #   - 静的IP 35.200.78.252（tagomori-minecraft-ip）を access_config にアタッチ
 #   - cloud-init で Docker / Tailscale / mc-proxy.service をプロビジョニング
@@ -58,8 +59,10 @@ resource "google_project_iam_member" "mc_proxy_secret_access" {
 # GCE VM: mc-proxy-1
 # ============================================================
 resource "google_compute_instance" "mc_proxy" {
-  name         = "mc-proxy-1"
-  machine_type = "e2-medium"
+  name = "mc-proxy-1"
+  # socat-tcp/socat-bedrock の薄いプロキシのみ稼働するため e2-micro へ downsize。
+  # ⚠️ apply 時は実機でメモリ（tailscaled + Docker + socat×2、1GB swap 併用）を要検証。
+  machine_type = "e2-micro"
   zone         = var.zone
   tags         = ["minecraft", "tailscale"]
 

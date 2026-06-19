@@ -2,14 +2,14 @@
 # Minecraft Monitoring - BigQuery Dataset / Table
 # ============================================================
 # フロー:
-#   vmalert (15m recording rules) → GCE bq-metrics.timer
-#   → bq insert (ADC via GCEインスタンスメタデータ、SA key 不要)
-#   → BigQuery → Looker Studio (task4) で gcp_billing_export と JOIN
+#   VictoriaMetrics(1s) → k3s Deployment bq-metrics (15秒解像度サンプリング)
+#   → bq insert → BigQuery → Looker Studio で gcp_billing_export と JOIN
 #
 # 認証方式:
 #   SA key 作成は org policy (constraints/iam.disableServiceAccountKeyCreation)
-#   で禁止されているため、GCE VM の mc-proxy-sa を使用する。
-#   GCE インスタンスメタデータ経由で ADC が自動提供されるため key 不要。
+#   で禁止されているため、k3s Pod は gcs-backup と同じ cred-file を再利用し
+#   mc-proxy-sa をインパーソネートして BigQuery dataEditor 権限で INSERT する
+#   （k8s/onprem/40-bq-metrics.yaml）。
 # ============================================================
 
 # ============================================================
@@ -85,7 +85,7 @@ resource "google_bigquery_dataset_iam_member" "mc_proxy_bq_editor" {
 # gcp_billing_export × minecraft_monitoring.server_metrics を日次で JOIN し
 # サーバー別コスト按分・プレイヤーあたりコストを算出する。
 #
-# NOTE: server_metrics は VictoriaMetrics → bq-metrics timer が稼働して
+# NOTE: server_metrics は VictoriaMetrics → k3s bq-metrics Deployment が稼働して
 #       初めてデータが入る。billing_export 側は 2026-03-01〜 のデータあり。
 #       双方にデータが揃った日付から JOIN 結果が出る。
 
@@ -196,16 +196,12 @@ output "looker_studio_cost_analysis_url" {
 }
 
 output "mc_monitoring_setup_note" {
-  description = "GCE VM への bq-metrics timer デプロイ手順"
+  description = "k3s への bq-metrics Deployment デプロイ手順"
   value       = <<-EOT
-    GCE VM に bq-metrics timer をデプロイ（既存 VM への手動適用）:
-      gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap -- '
-        sudo git -C /opt/mc-proxy pull
-        sudo install -m 0644 /opt/mc-proxy/systemd/bq-metrics.service /etc/systemd/system/
-        sudo install -m 0644 /opt/mc-proxy/systemd/bq-metrics.timer /etc/systemd/system/
-        sudo systemctl daemon-reload
-        sudo systemctl enable --now bq-metrics.timer
-        sudo systemctl list-timers bq-metrics.timer
-      '
+    BQ メトリクス挿入は k3s Deployment へ移設済み（k8s/onprem/40-bq-metrics.yaml）:
+      ssh k3s-worker 'sudo kubectl apply -f /path/to/k8s/onprem/40-bq-metrics.yaml'
+      ssh k3s-worker 'sudo kubectl -n minecraft rollout status deploy/bq-metrics'
+      ssh k3s-worker 'sudo kubectl -n minecraft logs deploy/bq-metrics --tail=20'
+    前提: Secret gcs-backup-credentials が minecraft namespace に存在すること。
   EOT
 }

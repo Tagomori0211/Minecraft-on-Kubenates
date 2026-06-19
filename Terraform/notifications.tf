@@ -40,12 +40,21 @@ resource "google_secret_manager_secret" "discord_webhook_url" {
 }
 
 # mc-proxy-sa に discord_webhook_url の読み取り権限を付与
-# （GCE VM 上の billing-discord-notifier.py と backup CronJob が使用する）
+# （backup CronJob が署名付き URL 通知に使用する）
 resource "google_secret_manager_secret_iam_member" "mc_proxy_webhook_access" {
   project   = var.project_id
   secret_id = google_secret_manager_secret.discord_webhook_url.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.mc_proxy_sa.email}"
+}
+
+# mc-monitoring-sa に webhook 読み取り権限を付与
+# （監視系再構築で discord-notifier を mc-monitoring-1 へ移設したため）
+resource "google_secret_manager_secret_iam_member" "mc_monitoring_webhook_access" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.discord_webhook_url.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.mc_monitoring_sa.email}"
 }
 
 # ============================================================
@@ -84,12 +93,22 @@ resource "google_pubsub_subscription" "billing_alerts_gce" {
   })
 }
 
-# mc-proxy-sa に Pull サブスクリプション Subscriber 権限を付与
-resource "google_pubsub_subscription_iam_member" "mc_proxy_billing_subscriber" {
+# mc-monitoring-sa に Pull サブスクリプション Subscriber 権限を付与
+# （discord-notifier が mc-monitoring-1 で課金/沈黙アラートを pull する）
+resource "google_pubsub_subscription_iam_member" "mc_monitoring_billing_subscriber" {
   project      = var.project_id
   subscription = google_pubsub_subscription.billing_alerts_gce.name
   role         = "roles/pubsub.subscriber"
-  member       = "serviceAccount:${google_service_account.mc_proxy_sa.email}"
+  member       = "serviceAccount:${google_service_account.mc_monitoring_sa.email}"
+}
+
+# mc-monitoring-sa に Publisher 権限を付与
+# （HealthCheck がオンプレ沈黙アラートを billing-alerts topic へ publish する）
+resource "google_pubsub_topic_iam_member" "mc_monitoring_billing_publisher" {
+  project = var.project_id
+  topic   = google_pubsub_topic.billing_alerts.name
+  role    = "roles/pubsub.publisher"
+  member  = "serviceAccount:${google_service_account.mc_monitoring_sa.email}"
 }
 
 # ============================================================

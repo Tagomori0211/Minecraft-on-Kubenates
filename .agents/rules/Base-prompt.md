@@ -3,7 +3,7 @@ trigger: always_on
 ---
 
 # 必ずやること
-- `.agents/workflows/project_context.md` と `Documents/architecture/infrastructure.mermaid` を読み込んで全体像を把握する
+- `.agents/workflows/project_context.md` と `Documents/Mermaids/infrastructure.mermaid` を読み込んで全体像を把握する
 - `gce/README.md` を確認してGCE側の構成を把握する
 - 明確な指示がない限り作業指示書、Task_mds ディレクトリは無視する
 
@@ -54,7 +54,7 @@ k3s クラスターへの操作が必要な場合は `.agents/workflows/k3s-ssh-
   （ただし gcloud 自体は k3s-worker から実行）
 
 ### Pod 再起動ルール（最重要）
-`minecraft` namespace の **全 Deployment（lobby / survival / mod / bedrock）** に適用:
+`minecraft` namespace の **全 Deployment（survival / bedrock）** に適用:
 
 - **`kubectl rollout restart` は絶対禁止**
 - **正しい手順: `replicas=0` で完全停止 → `replicas=1` で起動**

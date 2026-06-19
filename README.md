@@ -21,33 +21,33 @@
 
 本プロジェクトは、**オンプレミス（自宅サーバー）と Google Compute Engine を Tailscale VPN で接続**し、コスト効率と可用性を両立させた Minecraft サーバー基盤です。
 
-Java版・Bedrock版の両対応に加え、**VictoriaMetrics + Grafana による可観測性**、**BigQuery によるコスト・運用メトリクス分析**、**Discord による通知統合** までを Infrastructure as Code（IaC）で完全管理しています。
+Java版・Bedrock版の両対応に加え、**VictoriaMetrics + Grafana によるメトリクス可観測性**、**VictoriaLogs + Vector によるログ集約**、**BigQuery によるコスト・運用メトリクス分析**、**Discord による通知統合** までを Infrastructure as Code（IaC）で完全管理しています。
 
-> **History**: 2026/05/03 に GKE クラスターから GCE VM 構成へ移行（コスト削減）。2026/05/07-08 に監視スタックを k3s 内 Prometheus から GCE 専用 VM 上の VictoriaMetrics + Grafana に再構築。
+> **History**: 2026/05/03 に GKE クラスターから GCE VM 構成へ移行（コスト削減）。2026/05/07-08 に監視スタックを k3s 内 Prometheus から GCE 専用 VM 上の VictoriaMetrics + Grafana に再構築。2026/06 に VictoriaLogs + Vector ログパイプラインを追加し、メトリクス収集を 1 秒解像度へ、BigQuery 集積を k3s Pod（15 秒解像度）へ再設計。
 
 ### 🎯 設計思想
 
 | 観点 | アプローチ |
 |------|-----------|
-| **コスト最適化** | エントリポイントのみ GCE / 重量級ワークロードはオンプレに集約 |
+| **コスト最適化** | エントリポイントのみ GCE / 重量級ワークロードはオンプレに集約、クラウドは最小限リソース |
 | **可用性** | クラウド側プロキシで世界中からの常時アクセスを保証 |
 | **運用効率** | Terraform / Ansible / Kubernetes マニフェストで完全宣言的管理 |
 | **セキュリティ** | Tailscale ゼロトラストネットワーク・公開ポートを最小化 |
-| **可観測性** | vmagent → VictoriaMetrics → Grafana / BigQuery 二重配信 |
-| **通知統合** | 課金アラート・バックアップ完了を Discord に集約 |
+| **可観測性** | メトリクス（vmagent → VictoriaMetrics）+ ログ（Vector → VictoriaLogs）を Grafana / BigQuery へ集約 |
+| **通知統合** | 課金アラート・バックアップ完了・オンプレ沈黙検知を Discord に集約 |
 
 ---
 
 ## 🏗️ アーキテクチャ
 
 ### ゲームトラフィック
-![infrastructure](Documents/architecture/infrastructure.svg)
+![infrastructure](Documents/Mermaids/infrastructure.svg)
 
 ### 監視・通知系
-![monitoring](Documents/architecture/monitoring.svg)
+![monitoring](Documents/Mermaids/monitoring.svg)
 
 ### k3s-worker メモリ配分
-![pie](Documents/architecture/MenResource.svg)
+![pie](Documents/Mermaids/MenResource.svg)
 
 ---
 
@@ -60,18 +60,18 @@ Java版・Bedrock版の両対応に加え、**VictoriaMetrics + Grafana によ�
 | **Terraform** | >= 1.5.0 | GCE / VPC / IAM / BigQuery / Pub/Sub / Budget / Proxmox VM |
 | **Ansible** | - | k3s + Tailscale インストール、Minecraft マニフェストデプロイ |
 | **Kubernetes** | k3s v1.31 | オンプレ Minecraft サーバーのコンテナオーケストレーション |
-| **Docker Compose** | - | GCE 上の Velocity / nginx-stream / VictoriaMetrics / Grafana |
+| **Docker Compose** | - | mc-proxy-1: socat-tcp / socat-bedrock、mc-monitoring-1: VictoriaMetrics / VictoriaLogs / Vector / Grafana |
 
 ### クラウド・インフラ
 
 | サービス | 用途 |
 |---------|------|
-| **GCE: mc-proxy-1** (e2-medium) | Velocity + nginx-stream + socat-bedrock + systemd timer 群 |
-| **GCE: mc-monitoring-1** (e2-small) | VictoriaMetrics + Grafana（Tailscale 経由のみアクセス可） |
-| **BigQuery** | メトリクス時系列保存・課金 Export・コスト按分 VIEW |
-| **Cloud Storage** (Coldline) | 月次ワールドバックアップ（lifecycle: 365日 ARCHIVE / 1095日削除） |
-| **Pub/Sub** | 課金アラート用 pull subscription |
-| **Cloud Billing Budget** | ¥8,000/月・90% / 100% しきい値 |
+| **GCE: mc-proxy-1** (e2-micro) | socat-tcp（Java 25565）+ socat-bedrock（Bedrock 19132）の透過プロキシ |
+| **GCE: mc-monitoring-1** (e2-small) | VictoriaMetrics + VictoriaLogs + Vector + Grafana + HealthCheck + discord-notifier（Tailscale 経由のみアクセス可） |
+| **BigQuery** | メトリクス時系列保存（k3s Pod が 15 秒解像度で INSERT）・課金 Export・コスト按分 VIEW |
+| **Cloud Storage** (Standard) | 月次ワールドバックアップ（lifecycle: 31日 ARCHIVE / 365日削除） |
+| **Pub/Sub** | 課金アラート、オンプレ沈黙検知 |
+| **Cloud Billing Budget** | 80% / 90% / 100% でTopic配信 |
 | **Secret Manager** | Tailscale auth-key / Discord Webhook URL / Player hash salt |
 | **Proxmox VE** | オンプレミス仮想化基盤（Ryzen 5700G / 64GB） |
 | **Tailscale** | メッシュVPN（ゼロトラスト） |
@@ -80,15 +80,14 @@ Java版・Bedrock版の両対応に加え、**VictoriaMetrics + Grafana によ�
 
 | コンポーネント | イメージ |
 |---------------|---------|
-| Velocity Proxy | `itzg/bungeecord` |
-| nginx Stream | `nginx:alpine` |
-| socat (Bedrock UDP) | `alpine/socat` |
-| Lobby / Survival | `itzg/minecraft-server` (Paper) |
-| Java-Industry MOD | `itzg/minecraft-server` (NeoForge) |
+| socat (Java TCP / Bedrock UDP) | `alpine/socat` |
+| Survival | `itzg/minecraft-server`  |
 | Bedrock Server | `itzg/minecraft-bedrock-server` |
 | Metrics Exporter | `itzg/mc-monitor` |
 | VictoriaMetrics | `victoriametrics/victoria-metrics:v1.115.0` |
 | vmagent | `victoriametrics/vmagent:v1.115.0` |
+| VictoriaLogs | `victoriametrics/victoria-logs:v1.24.0-victorialogs` |
+| Vector | `timberio/vector:0.56.0-debian` |
 | Grafana | `grafana/grafana:11.6.1` |
 
 ---
@@ -103,15 +102,15 @@ Java版・Bedrock版の両対応に加え、**VictoriaMetrics + Grafana によ�
     │ 25565/TCP, 19132/UDP
     ▼
 [ GCE: mc-proxy-1 ]  ← 静的IP 35.200.78.252、24/365 公開エンドポイント
-    │  Docker Compose: nginx-stream + Velocity + socat-bedrock
+    │  Docker Compose: socat-tcp (Java) + socat-bedrock (Bedrock)
     │
     │ Tailscale 暗号化トンネル ≈ 20ms direct
     ▼
 [ オンプレ k3s-worker (Ryzen 5700G / 64GB) ]
-    └─ Lobby / Survival / Industry MOD / Bedrock BDS（合計 62GB JVM ヒープ）
+    └─ Survival（NeoForge 統合）/ Bedrock BDS（合計 46Gi JVM Request）
 ```
 
-「公開・薄いプロキシ層、可観測性の高い監視ノード」と「重量級ワークロード」を明確に分離。クラウド側は VM 2台に抑え、メモリ集約型のゲームサーバーをオンプレに寄せている。
+「公開・薄いプロキシ層、可観測性の高い監視ノード」と「重量級ワークロード」を明確に分離。クラウド側は VM 2台（エントランス + 監視）に抑え、メモリ集約型のゲームサーバーをオンプレに寄せている。Velocity / nginx-stream は撤去済みで、Java は socat-tcp が NodePort へ直結する。
 
 ### 2. Bedrock UDP の透過転送（socat）
 
@@ -125,7 +124,7 @@ socat-bedrock:
     - "UDP4:100.107.122.45:19132"
 ```
 
-Bedrock の RakNet は L7 プロキシで壊れるため、`fork` オプションでクライアント毎に独立 UDP ソケットを生成し Tailscale 経由で k3s `hostPort` まで一切改変せず透過転送。Java 側は `nginx-stream` の TCP プロキシ（25565 → 127.0.0.1:25577）で Velocity に渡している。
+Bedrock の RakNet は L7 プロキシで壊れるため、`fork` オプションでクライアント毎に独立 UDP ソケットを生成し Tailscale 経由で k3s `hostPort` まで一切改変せず透過転送。Java 側も同じく `socat-tcp`（`TCP4-LISTEN:25565,fork` → `100.107.122.45:30065`）で svc-survival の NodePort へ直結しており、Velocity / nginx-stream といった中間プロキシ層を撤去している。
 
 ### 3. Tailscale ゼロトラストネットワーク
 
@@ -139,45 +138,52 @@ Bedrock の RakNet は L7 プロキシで壊れるため、`fork` オプショ�
 
 GCE 側は `tailscaled` を host systemd（kernel mode）で起動。auth key は Secret Manager から `cloud-init` 起動時に取得。Grafana は `0.0.0.0:3000` でリッスンするが GCE ファイアウォールで未開放のため、Tailscale ピアからのみ到達可能。
 
-### 4. 監視スタック (VictoriaMetrics + Grafana)
+### 4. 監視スタック (VictoriaMetrics + VictoriaLogs + Grafana)
 
 ```text
-[ k3s vmagent ]
-    │ scrape 15s (Minecraft / k8s nodes / cAdvisor)
-    │ remote_write via Tailscale
-    ▼
+[ k3s vmagent ]                       [ k3s Vector DaemonSet ]
+    │ scrape 1s                            │ minecraft namespace の Pod ログ
+    │ (Minecraft / k8s nodes / cAdvisor)   │ read /var/log/pods
+    │ remote_write via Tailscale           │ vector protocol v2 via Tailscale
+    ▼                                      ▼
 [ GCE mc-monitoring-1 ]
-    ├── VictoriaMetrics :8428 （保持 90日 / -memory.allowedPercent=40）
-    └── Grafana :3000 （Tailscale 経由のみ・provisioning でデータソース・ダッシュボード自動投入）
+    ├── VictoriaMetrics :8428 （保持 14日 / -memory.allowedPercent=40・1s 高解像度のため短縮、長期は BQ）
+    ├── VictoriaLogs   :9428 （保持 30日 / -memory.allowedPercent=20）
+    ├── Vector Aggregator :9001 → VictoriaLogs（Loki API push）
+    └── Grafana :3000 （Tailscale 経由のみ・provisioning でデータソース／ダッシュボード自動投入）
 ```
 
-- `gce/monitoring/compose.yaml`: VictoriaMetrics + Grafana を Docker Compose で起動
+- `gce/monitoring/compose.yaml`: VictoriaMetrics + VictoriaLogs + Vector + Grafana を Docker Compose で起動
+- `gce/monitoring/vector/vector.yaml`: Vector Aggregator 設定（sink: VictoriaLogs）
+- `gce/monitoring/provisioning/datasources/`: Grafana に VictoriaMetrics / VictoriaLogs データソースを自動投入
 - `gce/monitoring/dashboards/minecraft-java-overview.json`: Java 各ワールドの稼働状態・プレイヤー数・応答時間・Pod リソース可視化
-- `k8s/onprem/30-victoria-metrics.yaml`: vmagent + RBAC（ClusterRole で nodes/cAdvisor scrape 権限）
+- `k8s/onprem/30-victoria-metrics.yaml`: vmagent + RBAC（ClusterRole で nodes/cAdvisor scrape 権限、scrape_interval 1s）
+- `k8s/onprem/42-vector-daemonset.yaml`: Vector DaemonSet（minecraft namespace のログを Tailscale 経由で集約）
 
 ### 5. BigQuery メトリクス収集
 
-mc-proxy-1 上の **systemd timer**（15 分間隔）が VictoriaMetrics へクエリを投げ、結果を BigQuery にストリーミング INSERT する。
+k3s 内の **BQ 挿入ジョブ Pod** が VictoriaMetrics（1 秒解像度）へクエリを投げ、**15 秒解像度にサンプリング**して BigQuery へストリーミング INSERT する。VM=1s / BQ=15s の二段集積構成。
 
-```ini
-# gce/systemd/bq-metrics.timer
-OnCalendar=*:0/15
-Persistent=true
+```text
+[ VictoriaMetrics :8428（1s 解像度） ]
+        │ PromQL query
+        ▼
+[ k3s BQ 挿入ジョブ Pod ] ── 15s サンプリング ──▶ [ BigQuery server_metrics ]
 ```
 
 - `Terraform/minecraft_monitoring.tf`: dataset `minecraft_monitoring` / table `server_metrics`（DAY パーティション + clustering=[server, metric_name]）
-- `gce/scripts/insert_metrics.py`: stdlib のみ・ADC（GCE メタデータ）認証・`avg_over_time` / `max_over_time` で 15 分集計
+- `k8s/onprem/` BQ 挿入ジョブ: stdlib のみ・ADC override（`CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`、SA キー作成禁止 org policy 対応）・`avg_over_time` / `max_over_time` で 15 秒集計
 - BigQuery `gcp_billing_export` × `server_metrics` を JOIN した **`cost_analysis_view`** によりプレイヤー比率で按分したコスト分析が可能（Looker Studio 接続向け）
 
 ### 6. Discord 通知統合（Pub/Sub Pull）
 
-Cloud Functions push subscription は Cloudflare の ASN レベルブロック（GCP Functions の IP がブロックリスト掲載）で 403 になるため、**GCE VM 上の systemd timer (5 分間隔) が pull する** 構成に変更。
+Cloud Functions push subscription は Cloudflare の ASN レベルブロック（GCP Functions の IP がブロックリスト掲載）で 403 になるため、**mc-monitoring-1 上の discord-notifier (5 分間隔) が pull する** 構成。
 
 ```text
 [ Cloud Billing Budget ¥8,000/月 ]
-    │ 90% / 100% threshold
+    │ 80% / 90% / 100% threshold
     ▼
-[ Pub/Sub: billing-alerts ] ←─── pull (5min) ─── [ billing-discord-notifier.service ]
+[ Pub/Sub: alerts ] ←─── pull (5min) ─── [ mc-monitoring-1: discord-notifier ]
                                                           │
                                                           ▼
                                                    Discord Webhook
@@ -185,24 +191,35 @@ Cloud Functions push subscription は Cloudflare の ASN レベルブロック�
 ```
 
 - `Terraform/notifications.tf`: Pub/Sub topic + pull subscription + Budget + Secret Manager
-- `gce/scripts/billing-discord-notifier.py`: stdlib のみ・`alertThresholdExceeded == 0` のメタメッセージはスキップ
+- `discord-notifier`: stdlib のみ・`alertThresholdExceeded == 0` のメタメッセージはスキップ
 - 月次バックアップ完了時にも `gcs-backup-cronjob` が **署名付き URL（7日有効）** 付き embed を Discord に送信
 
-### 7. GCS Coldline バックアップ
+### 7. オンプレ沈黙検知（HealthCheck）
+
+mc-monitoring-1 上の **HealthCheck コンテナ**（5 分間隔）が VictoriaMetrics へクエリを発行し、オンプレ k3s からのメトリクスが途絶（クエリ失敗）した場合に Pub/Sub 経由で Discord へ「オンプレ沈黙アラート」を送出する。
+
+```text
+[ mc-monitoring-1: HealthCheck ] ─ 5分間隔クエリ ─▶ [ VictoriaMetrics ]
+        │ クエリ失敗（オンプレ沈黙）
+        ▼
+[ Pub/Sub: alerts ] ─▶ [ discord-notifier ] ─▶ Discord「オンプレ沈黙アラート」
+```
+
+### 8. GCS Standard バックアップ
 
 ```yaml
 # Terraform/gcs_backup.tf
-storage_class = "COLDLINE"
+storage_class = "STANDARD"
 location      = "ASIA-NORTHEAST1"
 lifecycle_rule {
-  age = 365 → ARCHIVE
-  age = 1095 → 削除
+  age = 31  → ARCHIVE
+  age = 365 → 削除
 }
 ```
 
-k3s の `gcs-backup-cronjob`（毎月1日 03:00 JST）が Lobby / Survival / MOD / Bedrock の 4 ワールドを `tar.gz` 化して GCS にアップロード。署名付き URL 生成には `mc-proxy-sa` への `roles/iam.serviceAccountTokenCreator` 委譲を Terraform で設定済み。
+k3s の `gcs-backup-cronjob`（毎月1日 03:00 JST）が Survival / Bedrock の各ワールドを `tar.gz` 化して GCS にアップロード。署名付き URL 生成には `mc-proxy-sa` への `roles/iam.serviceAccountTokenCreator` 委譲を Terraform で設定済み。
 
-### 8. Secret 管理
+### 9. Secret 管理
 
 Secret Manager で以下を管理:
 
@@ -234,7 +251,7 @@ Secret Manager で以下を管理:
 
 ### VPS との比較（参考: 2026年5月時点・税込）
 
-同等のゲーム機能（Velocity + Lobby + Survival + MOD + Bedrock = 18〜28GB JVM ヒープ）を国内 VPS で構築した場合:
+同等のゲーム機能（Survival〔NeoForge 統合 MOD〕+ Bedrock BDS = 約 18〜24GB メモリ）を国内 VPS で構築した場合:
 
 | 構成 | 月額 | 年額 | 現構成との差 |
 |---|---:|---:|---:|
@@ -264,8 +281,8 @@ Secret Manager で以下を管理:
 | **月間クラウド支出** | 約 ¥7,000（mc-proxy-1 + mc-monitoring-1 + BQ + Pub/Sub）|
 | **グローバル遅延** | Tailscale Direct ≈ 20ms（東京リージョン経由）|
 | **デプロイ時間** | Terraform `apply` 約 5 分（VM プロビジョニング + cloud-init） |
-| **観測サイクル** | scrape 15秒 / BQ 集計 15分 / Discord pull 5分 |
-| **バックアップ** | 月次 GCS Coldline + 日次 MinIO（オンプレ） |
+| **観測サイクル** | scrape 1秒（VM）/ BQ 集積 15秒 / Discord pull 5分 / 沈黙検知 5分 |
+| **バックアップ** | 月次 GCS Standard + 日次 Bedrock バックアップ（CronJob） |
 | **コスト分析粒度** | プレイヤー比率按分（cost_analysis_view）|
 
 ---
@@ -275,13 +292,19 @@ Secret Manager で以下を管理:
 ### ✅ 完了（2026年5月）
 
 - GKE → GCE 移行・LB 統合・NAT 廃止
+- Velocity / nginx-stream 撤去（Java は socat-tcp → NodePort 直結）
 - VictoriaMetrics + Grafana スタックを GCE 専用 VM へ移行
-- BigQuery メトリクス収集（systemd timer + ADC 認証）
 - BigQuery `cost_analysis_view`（課金 Export × server_metrics 日次 JOIN）
-- GCS Coldline バックアップ（毎月1日・lifecycle 365日 ARCHIVE / 1095日削除）
+- GCS バックアップを STANDARD 化（毎月1日・lifecycle 31日 ARCHIVE / 365日削除）
 - 課金アラート Discord 通知（Pub/Sub pull subscription）
 - 月次バックアップ Discord 通知（署名付き URL 7日有効）
 - プライバシー設計（player_hash_salt by Secret Manager）
+
+### ✅ 完了（2026年6月）
+
+- VictoriaLogs + Vector ログ収集パイプライン追加（minecraft namespace のログを Grafana へ集約）
+- メトリクス収集を 1 秒解像度へ・BigQuery 集積を k3s Pod（15 秒解像度）へ再設計
+- discord-notifier / HealthCheck（オンプレ沈黙検知）を mc-monitoring-1 へ集約
 
 ### 🔲 今後
 

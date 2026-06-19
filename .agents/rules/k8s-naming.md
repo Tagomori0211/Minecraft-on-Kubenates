@@ -18,9 +18,9 @@ glob: "**/*.yaml,**/*.yml,k8s/**/*,manifests/**/*"
 
 **現状の稼働クラスター:**
 - ゲームサーバー: `minecraft` namespace（移行せず運用中）
-- 監視: `monitoring-prometheus` namespace（理想形で運用中）
 
 新規リソースを追加する場合は `minecraft` namespace に揃えること（既存クラスターとの整合性優先）。
+- 監視系はDocker-compose
 
 ## リソース名
 
@@ -55,5 +55,6 @@ labels:
 - `test`, `temp`, `new` などの曖昧な名前
 - Namespace なしのデプロイ（`default` namespace への直デプロイ禁止）
 - label なしリソースの作成（Prometheus のサービスディスカバリが死ぬ）
-- BDS Deployment に対して `kubectl rollout restart` を使用（旧 Pod と新 Pod が並走するリスクあり）
+### Pod再起動時に対して
+-  `kubectl rollout restart` を使用（旧 Pod と新 Pod が並走、OOMkiller発動するリスクあり）
   → 代わりに `scale --replicas=0` → `scale --replicas=1` を使うこと
