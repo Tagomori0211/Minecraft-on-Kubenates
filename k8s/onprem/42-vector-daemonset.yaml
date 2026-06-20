@@ -81,8 +81,8 @@ data:
       kubernetes_logs:
         type: kubernetes_logs
         # minecraft namespace のみ収集（他のシステムログを除外）
-        include_namespaces:
-          - minecraft
+        # Vector 0.56 では include_namespaces は無効。namespace 組込ラベルで絞る。
+        extra_namespace_label_selector: "kubernetes.io/metadata.name=minecraft"
         timezone: Asia/Tokyo
 
     transforms:
@@ -93,9 +93,10 @@ data:
           # Loki ラベル用にメタデータをトップレベルフィールドへ展開
           # app.kubernetes.io/component ラベルを job として使用
           .job = get(.kubernetes.pod_labels, ["app.kubernetes.io/component"]) ?? "unknown"
-          .log_container = .kubernetes.container_name ?? "unknown"
-          .log_namespace = .kubernetes.pod_namespace ?? "unknown"
-          .log_pod = .kubernetes.pod_name ?? "unknown"
+          # フィールドアクセスは欠損時 null を返し error しないため ?? でなく || で既定値
+          .log_container = .kubernetes.container_name || "unknown"
+          .log_namespace = .kubernetes.pod_namespace || "unknown"
+          .log_pod = .kubernetes.pod_name || "unknown"
 
     sinks:
       monitoring:
