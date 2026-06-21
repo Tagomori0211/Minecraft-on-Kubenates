@@ -10,3 +10,4 @@ scrape_configs:
         labels:
           instance: mc-proxy
           role: entrance
+          machine_type: e2-micro

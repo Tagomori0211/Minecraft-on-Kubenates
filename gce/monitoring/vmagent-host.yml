@@ -1,5 +1,7 @@
-# mc-monitoring-1 ホストメトリクス収集 + 同一VPCの他GCE VMの node-exporter scrape
-# （tagomori-app は別リポ cloud-observability-gateway 管理。内部VPC 10.100.0.15:9100 を scrape）
+# mc-monitoring-1 ホストメトリクス収集（node-exporter → ローカル VictoriaMetrics）
+# 注: tagomori-app は別リポ cloud-observability-gateway 側が自前で
+#     mc-monitoring の VictoriaMetrics へ remote_write(push) するため、
+#     ここから scrape はしない（instance=tagomori-app で受信済み）。
 global:
   scrape_interval: 30s
 
@@ -10,9 +12,4 @@ scrape_configs:
         labels:
           instance: mc-monitoring
           role: monitoring
-      # tagomori-app（Status Platform: cloudflared/envoy/api/mariadb）。
-      # 別リポで prom/node-exporter:9100 を起動すれば up になる。
-      - targets: ['10.100.0.15:9100']
-        labels:
-          instance: tagomori-app
-          role: app
+          machine_type: e2-small

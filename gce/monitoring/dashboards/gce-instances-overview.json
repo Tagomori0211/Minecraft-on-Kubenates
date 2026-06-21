@@ -100,6 +100,32 @@
         { "refId": "A", "expr": "sum by (instance) (rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br.*|tailscale.*\", instance=~\"$instance\"}[5m]))", "legendFormat": "{{instance}} rx" },
         { "refId": "B", "expr": "-sum by (instance) (rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br.*|tailscale.*\", instance=~\"$instance\"}[5m]))", "legendFormat": "{{instance}} tx" }
       ]
+    },
+    {
+      "type": "row",
+      "title": "インスタンス情報",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }
+    },
+    {
+      "type": "table",
+      "title": "インスタンス一覧（タイプ / vCPU / メモリ / OS）",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "メモリ" }, "properties": [ { "id": "unit", "value": "bytes" } ] } ] },
+      "options": { "showHeader": true },
+      "targets": [
+        { "refId": "TYPE", "format": "table", "instant": true, "expr": "max by (instance, machine_type, role) (node_uname_info{instance=~\"$instance\"})" },
+        { "refId": "VCPU", "format": "table", "instant": true, "expr": "count by (instance) (node_cpu_seconds_total{mode=\"idle\", instance=~\"$instance\"})" },
+        { "refId": "MEM", "format": "table", "instant": true, "expr": "max by (instance) (node_memory_MemTotal_bytes{instance=~\"$instance\"})" }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "instance", "mode": "outer" } },
+        { "id": "organize", "options": {
+          "excludeByName": { "Time": true, "Time 1": true, "Time 2": true, "Time 3": true, "Value #TYPE": true },
+          "renameByName": { "instance": "インスタンス", "machine_type": "タイプ", "role": "役割", "Value #VCPU": "vCPU", "Value #MEM": "メモリ" },
+          "indexByName": { "instance": 0, "machine_type": 1, "role": 2, "Value #VCPU": 3, "Value #MEM": 4 }
+        } }
+      ]
     }
   ]
 }
