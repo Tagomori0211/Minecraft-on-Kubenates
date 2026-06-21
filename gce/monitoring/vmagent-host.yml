@@ -1,0 +1,11 @@
+# mc-monitoring-1 ホストメトリクス収集（node-exporter → ローカル VictoriaMetrics）
+global:
+  scrape_interval: 30s
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+      - targets: ['127.0.0.1:9100']
+        labels:
+          instance: mc-monitoring
+          role: monitoring

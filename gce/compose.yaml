@@ -30,3 +30,31 @@ services:
     command:
       - "UDP4-LISTEN:19132,fork,reuseaddr"
       - "UDP4:100.107.122.45:19132"
+
+  # ── ホストメトリクス（このVMの CPU/メモリ/ディスク/NW）──
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node-exporter
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - '/:/host:ro,rslave'
+
+  # node-exporter を scrape し mc-monitoring の VictoriaMetrics へ remote_write（push）
+  # MIG 再作成で Tailscale IP が変わるため scrape ではなく push 型で収集
+  vmagent-host:
+    image: victoriametrics/vmagent:v1.115.0
+    container_name: vmagent-host
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./vmagent.yml:/etc/vmagent/vmagent.yml:ro
+    command:
+      - "-promscrape.config=/etc/vmagent/vmagent.yml"
+      - "-remoteWrite.url=http://100.121.113.37:8428/api/v1/write"
+    depends_on:
+      - node-exporter

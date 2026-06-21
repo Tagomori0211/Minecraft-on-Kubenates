@@ -1,0 +1,105 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "title": "GCE インスタンス概況 (mc-proxy / mc-monitoring)",
+  "uid": "gce-instances",
+  "tags": ["gce", "infra"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+        "query": "label_values(node_uname_info, instance)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "概況（CPU / メモリ / ディスク / 稼働時間）",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "CPU 使用率 (%)",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area", "textMode": "value_and_name" },
+      "targets": [ { "refId": "A", "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\", instance=~\"$instance\"}[5m])) * 100)", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "type": "stat",
+      "title": "メモリ 使用率 (%)",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area", "textMode": "value_and_name" },
+      "targets": [ { "refId": "A", "expr": "(1 - node_memory_MemAvailable_bytes{instance=~\"$instance\"} / node_memory_MemTotal_bytes{instance=~\"$instance\"}) * 100", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "type": "stat",
+      "title": "ディスク 使用率 (%) /",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "textMode": "value_and_name" },
+      "targets": [ { "refId": "A", "expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\", fstype!~\"tmpfs|overlay\", instance=~\"$instance\"} / node_filesystem_size_bytes{mountpoint=\"/\", instance=~\"$instance\"}) * 100", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "type": "stat",
+      "title": "稼働時間",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "steps": [ { "color": "green", "value": null } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "graphMode": "none", "textMode": "value_and_name" },
+      "targets": [ { "refId": "A", "expr": "time() - node_boot_time_seconds{instance=~\"$instance\"}", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU 使用率 (%) 推移",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 10, "showPoints": "never" } } },
+      "targets": [ { "refId": "A", "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\", instance=~\"$instance\"}[5m])) * 100)", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "メモリ 使用率 (%) 推移",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 10, "showPoints": "never" } } },
+      "targets": [ { "refId": "A", "expr": "(1 - node_memory_MemAvailable_bytes{instance=~\"$instance\"} / node_memory_MemTotal_bytes{instance=~\"$instance\"}) * 100", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Load average (1m)",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 10, "showPoints": "never" } } },
+      "targets": [ { "refId": "A", "expr": "node_load1{instance=~\"$instance\"}", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "ネットワーク 受信/送信 (B/s)",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "fillOpacity": 10, "showPoints": "never" } } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (instance) (rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br.*|tailscale.*\", instance=~\"$instance\"}[5m]))", "legendFormat": "{{instance}} rx" },
+        { "refId": "B", "expr": "-sum by (instance) (rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br.*|tailscale.*\", instance=~\"$instance\"}[5m]))", "legendFormat": "{{instance}} tx" }
+      ]
+    }
+  ]
+}
