@@ -1,0 +1,101 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "title": "オンプレ k3s-worker リソース概況",
+  "uid": "onprem-overview",
+  "tags": ["onprem", "k3s"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "row",
+      "title": "ノード概況 (k3s-worker / Ryzen 5700G)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "CPU 使用率 (%)",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "expr": "100 * sum(rate(container_cpu_usage_seconds_total{id=\"/\"}[5m])) / sum(machine_cpu_cores)" } ]
+    },
+    {
+      "type": "stat",
+      "title": "メモリ 使用率 (%)",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 80 }, { "color": "red", "value": 92 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "expr": "100 * sum(container_memory_working_set_bytes{id=\"/\"}) / sum(machine_memory_bytes)" } ]
+    },
+    {
+      "type": "stat",
+      "title": "ディスク 使用率 (%)",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "expr": "100 * sum(container_fs_usage_bytes{id=\"/\"}) / sum(container_fs_limit_bytes{id=\"/\"})" } ]
+    },
+    {
+      "type": "stat",
+      "title": "稼働 Pod 数 (minecraft)",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "steps": [ { "color": "blue", "value": null } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [ { "refId": "A", "expr": "count(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"minecraft\", container!=\"\"}[5m])))" } ]
+    },
+    {
+      "type": "row",
+      "title": "ノード推移",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 }
+    },
+    {
+      "type": "timeseries",
+      "title": "ノード CPU 使用率 (%) 推移",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "fillOpacity": 15, "showPoints": "never" } } },
+      "targets": [ { "refId": "A", "expr": "100 * sum(rate(container_cpu_usage_seconds_total{id=\"/\"}[5m])) / sum(machine_cpu_cores)", "legendFormat": "node CPU%" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "ノード メモリ 使用量 (GiB)",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 15, "showPoints": "never" } } },
+      "targets": [
+        { "refId": "A", "expr": "sum(container_memory_working_set_bytes{id=\"/\"})", "legendFormat": "used" },
+        { "refId": "B", "expr": "sum(machine_memory_bytes)", "legendFormat": "total" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Pod 別リソース (minecraft namespace)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Pod 別 CPU (cores)",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 10, "showPoints": "never", "stacking": { "mode": "normal" } } } },
+      "targets": [ { "refId": "A", "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"minecraft\", container!=\"\"}[5m]))", "legendFormat": "{{pod}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pod 別 メモリ (working set)",
+      "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "showPoints": "never", "stacking": { "mode": "normal" } } } },
+      "targets": [ { "refId": "A", "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"minecraft\", container!=\"\"})", "legendFormat": "{{pod}}" } ]
+    }
+  ]
+}
