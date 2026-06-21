@@ -41,7 +41,7 @@ Java版・Bedrock版の両対応に加え、**VictoriaMetrics + Grafana によ�
 ## 🏗️ アーキテクチャ
 
 ### ゲームトラフィック
-![infrastructure](Documents/Mermaids/infrastructure.svg)
+![infrastructure](Documents/Mermaids/GameTraffic.png)
 
 ### 監視・通知系
 ![monitoring](Documents/Mermaids/monitoring.svg)
