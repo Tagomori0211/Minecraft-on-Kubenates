@@ -22,6 +22,19 @@ groups:
           summary: "Minecraft {{ $labels.component }} が unhealthy"
           description: "{{ $labels.component }} が5分以上 healthy=0（バックアップ等の計画停止を除き要確認）。"
 
+      # ── Bedrock 接続不能（pongは返るが MOTD欠落）──
+      #    2026-06-21 障害(level.dat LANBroadcast=0)の再発検知。healthy==0 でも拾えるが
+      #    「応答あり×MOTD無し＝接続不能」という原因を即断できるよう専用化。
+      #    ※ minecraft_status_responding / _motd_present は改修後の自作エクスポーターが出力。
+      - alert: BedrockUnjoinableNoMOTD
+        expr: minecraft_status_responding == 1 and minecraft_status_motd_present == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Bedrock が応答するが MOTD未広告（接続不能）"
+          description: "RakNet応答はあるが offline-ping に MOTD が無く、クライアントが接続できません。world の level.dat で LANBroadcast / MultiplayerGameIntent を確認（Documents/OperationPostmortem/postmortem-bedrock-motd-unjoinable.md）。"
+
       # ── scrape ターゲット停止 ──
       - alert: ScrapeTargetDown
         expr: up{location="onprem"} == 0

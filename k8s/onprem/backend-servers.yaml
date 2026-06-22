@@ -70,8 +70,8 @@ data:
     DATA_DIR = '/data'
 
     def read_static_info():
-        """BDS バージョンと max-players を起動時に server.properties / ファイル名から取得。
-        BDS 1.26.x は RakNet pong に MOTD を含まないためここで補完する。"""
+        """max-players と BDS バージョンを server.properties / ファイル名からフォールバック取得。
+        通常は正常 pong の MOTD から取得するが、取得不能時の補完に使う。"""
         max_players = 0
         version = ''
         try:
@@ -93,9 +93,12 @@ data:
     _static_max_players, _static_version = read_static_info()
 
     _lock = threading.Lock()
-    _state = {'healthy': 0, 'players': 0, 'rt': 0.0}
+    _state = {'healthy': 0, 'responding': 0, 'motd': 0, 'players': 0, 'rt': 0.0, 'version': ''}
 
     def ping():
+        # 戻り値: responding(pong受信), motd_present(server-ID文字列あり=接続可), players, version, rt
+        # 2026-06-21 障害: pong は返るが MOTD 欠落(level.dat LANBroadcast=0)で接続不能だった。
+        #   「pongが返る=healthy」では検知できなかったため、healthy は MOTD 有無で判定する。
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(TIMEOUT)
         try:
@@ -104,27 +107,31 @@ data:
             s.sendto(pkt, (HOST, PORT))
             data, _ = s.recvfrom(4096)
             elapsed = time.monotonic() - t0
-            # MOTD があれば players_online を解析（BDS 将来版で修正された場合に対応）
-            players = 0
-            if len(data) > 35:
+            motd_present, players, version = 0, 0, ''
+            if len(data) >= 35 and data[0] == 0x1c:
                 slen = struct.unpack('>H', data[33:35])[0]
-                if len(data) >= 35 + slen > 0:
+                if slen > 0 and len(data) >= 35 + slen:
                     parts = data[35:35+slen].decode('utf-8', errors='replace').split(';')
-                    try: players = int(parts[4])
-                    except (ValueError, IndexError): pass
-            return 1, players, elapsed
+                    if len(parts) >= 6 and parts[0] in ('MCPE', 'MCEE'):
+                        motd_present = 1
+                        try: players = int(parts[4])
+                        except (ValueError, IndexError): pass
+                        version = parts[3] if len(parts) > 3 else ''
+            return 1, motd_present, players, version, elapsed
         except socket.timeout:
-            return 0, 0, 0.0
+            return 0, 0, 0, '', 0.0
         except Exception:
-            return 0, 0, 0.0
+            return 0, 0, 0, '', 0.0
         finally:
             s.close()
 
     def loop():
         while True:
-            h, p, rt = ping()
+            responding, motd, players, version, rt = ping()
             with _lock:
-                _state.update({'healthy': h, 'players': p, 'rt': rt})
+                # healthy = 接続可能(=MOTDを広告できている)。MOTD欠落は unjoinable とみなし 0。
+                _state.update({'healthy': motd, 'responding': responding, 'motd': motd,
+                               'players': players, 'rt': rt, 'version': version or _static_version})
             time.sleep(INTERVAL)
 
     class Handler(BaseHTTPRequestHandler):
@@ -133,12 +140,18 @@ data:
                 self.send_response(404); self.end_headers(); return
             with _lock:
                 s = dict(_state)
-            v = _static_version
+            v = s.get('version') or _static_version
             lbl = f'server_edition="bedrock",server_host="{HOST}",server_port="{PORT}",server_version="{v}"'
             body = '\n'.join([
-                '# HELP minecraft_status_healthy Indicates if the server is healthy (1) or not (0)',
+                '# HELP minecraft_status_healthy Joinable(1)=pongにMOTDあり / unjoinable(0)',
                 '# TYPE minecraft_status_healthy gauge',
                 f'minecraft_status_healthy{{{lbl}}} {s["healthy"]}',
+                '# HELP minecraft_status_responding RakNetがpongを返すか(1/0)。MOTD有無は問わない',
+                '# TYPE minecraft_status_responding gauge',
+                f'minecraft_status_responding{{{lbl}}} {s["responding"]}',
+                '# HELP minecraft_status_motd_present pongにserver-ID文字列(MOTD)があるか(1/0)',
+                '# TYPE minecraft_status_motd_present gauge',
+                f'minecraft_status_motd_present{{{lbl}}} {s["motd"]}',
                 '# HELP minecraft_status_players_online_count Current online players',
                 '# TYPE minecraft_status_players_online_count gauge',
                 f'minecraft_status_players_online_count{{{lbl}}} {s["players"]}',
@@ -224,10 +237,11 @@ spec:
             - { name: ALLOW_CHEATS, value: "true" }
             - { name: MAX_PLAYERS, value: "25" }
             - { name: ALLOW_LIST, value: "false" }
-            - { name: VIEW_DISTANCE, value: "48" }
+            - { name: LEVEL_NAME, value: "Bedrock level" }   # 2026-06-21 明示固定（破損ワールド昇格に伴い）
+            - { name: VIEW_DISTANCE, value: "48" }            # 過大値。トンネル越し前提では 12 程度推奨
             - { name: TICK_DISTANCE, value: "8" }
             - { name: PLAYER_IDLE_TIMEOUT, value: "30" }
-            - { name: RAKNET_FORCE_MTU, value: "1200" }
+            # RAKNET_FORCE_MTU は itzg 非対応の no-op だったため削除（2026-06-21）
             - { name: DISABLE_CLIENT_VIBRANT_VISUALS, value: "false" }
           ports:
             - containerPort: 19132
@@ -243,8 +257,11 @@ spec:
         # Probes removed due to missing mc-monitor binary in bedrock image
 
         # ── カスタム Bedrock モニター（Prometheus Exporter）────────
-        # BDS 1.26.x の MOTDなし最小Pong に対応した Python 製エクスポーター。
-        # itzg/mc-monitor は MOTD 必須のため healthy=0 になる問題を回避。
+        # NOTE(2026-06-21): 「MOTDなし最小Pong は BDS1.26.x 仕様」は誤認だった。
+        #   実際は level.dat の LANBroadcast=0 によるワールド固有バグで、Bedrock 接続不可の真因。
+        #   修正済み → Documents/OperationPostmortem/postmortem-bedrock-motd-unjoinable.md
+        #   ⚠️ この自作エクスポーターは MOTDなしでも healthy=1 を返し、当該障害を17h検知できなかった。
+        #      → MOTD有無 / players_online が長時間0 を監視・アラート条件に追加すること。
         - name: mc-monitor
           image: python:3.12-alpine
           command: ["python3", "/scripts/monitor.py"]
