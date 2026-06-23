@@ -1,329 +1,273 @@
-**Hybrid Cloud Minecraft Infrastructure**
+# Minecraft Hybrid Cloud Infrastructure
 
-Minecraftマルチサーバーを **GCE + オンプレミス k3s** のハイブリッド構成で運用するインフラ基盤です。
-2026-05-03 に GKE → GCE 移行を完了し、月額 ¥19,700 → ¥3,680（81% 削減）を達成。
+**GCE + オンプレミス k3s のハイブリッド構成で Minecraft を運用するインフラ基盤**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](../../LICENSE)
+![Terraform](https://img.shields.io/badge/IaC-Terraform-%237B42BC.svg?style=for-the-badge&logo=terraform&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-k3s-%23326CE5.svg?style=for-the-badge&logo=kubernetes&logoColor=white)
+![Google Cloud](https://img.shields.io/badge/Google_Cloud-GCE+BigQuery-%234285F4.svg?style=for-the-badge&logo=google-cloud&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-%232496ED.svg?style=for-the-badge&logo=docker&logoColor=white)
+![Tailscale](https://img.shields.io/badge/Tailscale-VPN-%2354362B.svg?style=for-the-badge&logo=tailscale&logoColor=white)
+![VictoriaMetrics](https://img.shields.io/badge/VictoriaMetrics-Monitoring-%23e6522c.svg?style=for-the-badge&logo=prometheus&logoColor=white)
+![Grafana](https://img.shields.io/badge/Grafana-Dashboard-%23F46800.svg?style=for-the-badge&logo=grafana&logoColor=white)
 
 ---
 
-## 🎯 プロジェクト概要
+## プロジェクト概要
+
+Java 版・Bedrock 版に両対応した Minecraft サーバーを、**GCP（GCE）とオンプレミスのハイブリッド構成**で運用するインフラ基盤です。
+
+クラウド側は **socat 透過転送のみ** に機能を絞り込んだ薄いプロキシ層（e2-micro）とし、メモリ集約型のゲームサーバーをオンプレミス k3s に寄せることでコストを最小化。監視・ログ基盤は独立した GCE VM（e2-small）上に構築し、クラスタ障害時も観測を継続できる設計としています。
+
+インフラ全体を Terraform / Ansible / Kubernetes マニフェストで宣言的に管理し、メトリクス・ログ・アラート・バックアップ・課金通知まで IaC の範囲に含めています。
+
+### 設計思想
 
 | 観点 | アプローチ |
 |------|-----------|
-| **コスト最適化** | GKE 廃止 → GCE 単一 VM + Docker Compose（81% 削減達成） |
-| **可用性** | プロキシ層をクラウドに配置、グローバルアクセス確保 |
-| **運用効率** | Terraform / Ansible / Kubernetes による IaC |
-| **セキュリティ** | Tailscale によるゼロトラストネットワーク |
+| **コスト最適化** | クラウド VM を最小スペックに絞り、重量級ワークロードをオンプレミスに集約 |
+| **可用性** | クラウド側の静的 IP で世界中からのアクセスを保証 |
+| **可観測性** | メトリクス（1 秒解像度）+ ログを Grafana に集約、長期分析は BigQuery |
+| **セキュリティ** | Tailscale ゼロトラストネットワーク・公開ポートを最小化 |
+| **運用効率** | Terraform / Ansible / k8s マニフェストで完全宣言的管理 |
 
 ---
 
-## 🏗️ システムアーキテクチャ
+## アーキテクチャ
 
-![infrastructure](../Mermaids/infrastructure.svg)
+```mermaid
+flowchart LR
+    Player(["プレイヤー\nJava / Bedrock"])
 
-### コンポーネント一覧
+    subgraph GCE_Proxy["GCE プロキシ VM（e2-micro）\n静的 IP 公開エンドポイント"]
+        socat_tcp["socat-tcp\nTCP :25565"]
+        socat_bds["socat-bedrock\nUDP :19132"]
+    end
 
-| レイヤー | コンポーネント | 配置 | 役割 |
-|----------|---------------|------|------|
-| Entry | nginx-stream | GCE Docker Compose | Java TCP 25565 → Velocity へ中継 |
-| Entry | socat-bedrock | GCE Docker Compose | Bedrock UDP 19132 fork透過転送（RakNet対応） |
-| Proxy | Velocity 3.4 | GCE Docker Compose | Java版プロキシ・サーバー振り分け |
-| Game | Lobby (Paper) | On-Prem k3s | プレイヤー初回接続先（8Gi） |
-| Game | Survival (Paper) | On-Prem k3s | バニラサバイバル（16Gi） |
-| Game | Industry (NeoForge) | On-Prem k3s | 工業 MOD サーバー（30Gi） |
-| Game | Bedrock BDS | On-Prem k3s | Bedrock Edition（8Gi / hostPort 19132） |
-| Network | Tailscale | Both | ゼロトラストVPN（Direct ≈ 20ms） |
-| Monitoring | Prometheus + Grafana | On-Prem k3s-monitoring | メトリクス収集・可視化 |
+    subgraph VPN["Tailscale VPN（WireGuard）"]
+        mesh["暗号化メッシュ\n≈ 20ms"]
+    end
+
+    subgraph OnPrem["オンプレミス k3s（Ryzen 5700G / 64GB）"]
+        survival["Survival\nNeoForge 1.21.1"]
+        bedrock["Bedrock BDS"]
+        bq_pod["BQ メトリクス Pod\n15 秒集約"]
+    end
+
+    subgraph GCE_Mon["GCE 監視 VM（e2-small）"]
+        vm["VictoriaMetrics\n1 秒解像度"]
+        grafana["Grafana"]
+        vlog["VictoriaLogs"]
+    end
+
+    BQ[("BigQuery\n長期分析")]
+
+    Player -->|TCP 25565| socat_tcp
+    Player -->|UDP 19132| socat_bds
+    socat_tcp --> mesh
+    socat_bds --> mesh
+    mesh --> survival
+    mesh --> bedrock
+    OnPrem -->|vmagent push| vm
+    GCE_Proxy -->|vmagent push| vm
+    bq_pod -->|Streaming INSERT| BQ
+    vm --> grafana
+    vlog --> grafana
+```
+
+### 接続フロー
+
+```
+Java:    プレイヤー → 静的IP:25565/TCP
+              → socat-tcp → Tailscale → k3s NodePort
+              → NeoForge Survival サーバー
+
+Bedrock: プレイヤー → 静的IP:19132/UDP
+              → socat-bedrock → Tailscale → k3s hostPort
+              → Bedrock Dedicated Server
+```
 
 ---
 
-## 🔧 技術スタック
+## 技術スタック
 
 ### Infrastructure as Code
 
-```mermaid
-flowchart LR
-    subgraph Source
-        Git["Git"]
-    end
-
-    subgraph Provisioning
-        TF["Terraform"]
-    end
-
-    subgraph Configuration
-        Ansible["Ansible"]
-    end
-
-    subgraph Orchestration
-        K8S["Kubernetes (k3s)"]
-    end
-
-    subgraph Runtime
-        GCE_Compose["GCE Docker Compose"]
-        K3S_Pods["k3s Pods"]
-    end
-
-    Git --> TF
-    TF --> Ansible
-    TF --> K8S
-    Ansible --> K8S
-    K8S --> GCE_Compose
-    K8S --> K3S_Pods
-```
-
 | ツール | 用途 |
 |--------|------|
-| **Terraform** | GCE VM / VPC / Proxmox VM プロビジョニング |
-| **Ansible** | k3s インストール、マニフェストデプロイ |
-| **Kubernetes (k3s)** | オンプレ コンテナオーケストレーション |
-| **Docker Compose** | GCE VM 上の Velocity / nginx / socat |
-| **Tailscale** | メッシュVPN（WireGuard）|
+| **Terraform** | GCE VM / MIG / VPC / IAM / BigQuery / Pub/Sub / Budget / Proxmox VM |
+| **Ansible** | k3s + Tailscale インストール、マニフェストデプロイ |
+| **Kubernetes (k3s)** | ゲームサーバー・バックアップ CronJob・監視エージェントのオーケストレーション |
+| **Docker Compose** | GCE プロキシ VM・GCE 監視 VM のコンテナ管理 |
+
+### クラウドサービス
+
+| サービス | 構成 | 役割 |
+|---------|------|------|
+| **GCE プロキシ VM** | e2-micro / Autohealing MIG | socat による TCP/UDP 透過転送 |
+| **GCE 監視 VM** | e2-small / Docker Compose | VictoriaMetrics + VictoriaLogs + Grafana |
+| **BigQuery** | Streaming INSERT（15 秒集約） | メトリクス長期保存・コスト分析 |
+| **Cloud Storage** | STANDARD / lifecycle 管理 | 月次ワールドバックアップ（遠隔保存） |
+| **Pub/Sub + Budget** | Pull 型 Discord 通知 | 課金アラート（80% / 90% / 100%） |
+| **Secret Manager** | - | Tailscale auth-key / Webhook URL 等 |
+| **Tailscale** | メッシュ VPN | GCE ↔ オンプレのゼロトラスト接続 |
+
+### アプリケーション
+
+| コンポーネント | イメージ | 配置 |
+|--------------|---------|------|
+| socat-tcp / socat-bedrock | `alpine/socat` | GCE プロキシ VM |
+| NeoForge Survival | `itzg/minecraft-server` | k3s |
+| Bedrock Dedicated Server | `itzg/minecraft-bedrock-server` | k3s |
+| VictoriaMetrics | `victoriametrics/victoria-metrics:v1.115.0` | GCE 監視 VM |
+| VictoriaLogs | `victoriametrics/victoria-logs:v1.24.0-victorialogs` | GCE 監視 VM |
+| Vector | `timberio/vector:0.56.0-debian` | GCE 監視 VM / k3s DaemonSet |
+| vmagent | `victoriametrics/vmagent:v1.115.0` | GCE 監視 VM / k3s |
+| vmalert + Alertmanager | `victoriametrics/vmalert` + `prom/alertmanager` | GCE 監視 VM |
+| Grafana | `grafana/grafana:11.6.1` | GCE 監視 VM |
 
 ---
 
-## 🌐 ネットワーク構成
+## 主要な設計ポイント
 
-```mermaid
-flowchart LR
-    subgraph Public
-        Internet["Internet"]
-        IP["35.200.78.252\n(静的IP)"]
-    end
+### 1. Bedrock UDP 透過転送（socat）
 
-    subgraph GCE["GCE mc-proxy-1 (e2-medium)"]
-        Nginx["nginx-stream\n:25565/TCP"]
-        Velocity["Velocity\n:25577/TCP"]
-        Socat["socat-bedrock\n:19132/UDP fork"]
-        Tailscaled["tailscaled\n100.124.222.31"]
-        Nginx --> Velocity
-    end
+Bedrock の RakNet プロトコルは L7 プロキシ（Nginx Stream UDP / WaterdogPE 等）では
+- パケットドロップによるインベントリ操作不能
+- XUID 消失で多人数接続が不可（`Already connected` エラー）
+- ソースポート書き換えによるセッション切断
 
-    subgraph TS_Net["Tailscale VPN"]
-        Direct["Direct Path ≈ 20ms"]
-    end
+などの障害が発生します（[ポストモーテム](../OperationPostmortem/)参照）。
 
-    subgraph K3S_Net["k3s (100.107.122.45)"]
-        K3S_Svc["10.43.0.0/16"]
-    end
+`socat` の `fork` オプションでクライアントごとに独立した UDP ソケットを生成し、Tailscale 経由で BDS の `hostPort` まで **パケットを一切改変せず** 透過転送することで完全解決しました。Java 側も同様に `socat-tcp` で NodePort へ直結し、中間プロキシ層（Velocity / nginx-stream）を撤去しています。
 
-    Internet --> IP
-    IP --> Nginx
-    IP --> Socat
-    Velocity --> Tailscaled
-    Socat --> Tailscaled
-    Tailscaled <--> Direct
-    Direct <--> K3S_Svc
+### 2. ゲームサーバー構成
+
+```
+k3s minecraft namespace
+  ├── deploy-survival    NeoForge 1.21.1（統合 MOD サーバー）
+  │     ├── サイドカー: mc-monitor（メトリクスエクスポーター）
+  │     └── サイドカー: log-shipper（ゲームログ → VictoriaLogs）
+  └── deploy-bedrock     Bedrock Dedicated Server
+        └── サイドカー: mc-monitor（カスタム MOTD ヘルスチェック）
 ```
 
-| 項目 | 値 |
+ワールドは **同一サーバー上のカスタムディメンション** で分離（オーバーワールド＝生活 / `industry` ディメンション＝工業）。独立したサーバー間で振り分ける Lobby 層を廃し、運用負荷を削減しています。
+
+### 3. 監視スタック（クラスタ外設計）
+
+```
+k3s vmagent（1 秒 scrape）────┐
+                               ├─→ GCE 監視 VM VictoriaMetrics ──→ Grafana
+GCE プロキシ vmagent（push）──┘
+
+k3s Vector DaemonSet ─────────→ GCE 監視 VM VictoriaLogs ────→ Grafana
+```
+
+監視 VM を k3s クラスタから **完全に独立** させることで、クラスタ障害時も観測を継続できます。Grafana はファイアウォールで未公開とし、Tailscale ピアからのみアクセス可能です。
+
+Bedrock の `MOTD 欠落` 障害（BDS バグで RakNet Pong に MOTD が含まれず 17 時間検知されなかった事例）を教訓に、カスタムエクスポーターが **MOTD の内容まで検証** して `healthy=1` を判定します。
+
+### 4. メトリクス二段集積
+
+```
+VictoriaMetrics（1 秒解像度・14 日保持）
+       │ PromQL query
+       ▼
+BQ 挿入 Pod（k3s）── 15 秒集約 ──→ BigQuery server_metrics
+```
+
+短時間スパイク（TPS・MSPT）は VM で高解像度観測し、長期トレンドは BigQuery に蓄積。課金 Export との JOIN で **プレイヤー比率によるコスト按分**（`cost_analysis_view`）も実現しています。
+
+### 5. バックアップ戦略
+
+```
+日次 04:00 JST  CronJob ──→ オンプレ MinIO（S3 互換）    RPO: 24 時間
+月次  1日 03:00 JST CronJob ──→ GCS STANDARD             RPO: 最大 30 日
+                                  （31 日で ARCHIVE・365 日で削除）
+```
+
+GCS バックアップ完了時は **署名付き URL（7 日有効）付きの Discord 通知** を自動送信します。
+
+---
+
+## コスト削減の変遷
+
+| フェーズ | 構成 | 月額 |
+|---------|------|----:|
+| GKE Hybrid（初期） | GKE Standard + オンプレ k3s | 約 ¥19,700 |
+| **GCE 移行後（現行）** | **GCE 2台（e2-micro + e2-small）+ BQ + Pub/Sub** | **約 ¥7,000** |
+
+主な削減要因：GKE 制御プレーン・Cloud NAT・Phantom LB の廃止、単一静的 IP への統合
+
+### VPS との比較（参考）
+
+同等メモリ（Java + Bedrock で 約 20〜24GB）を VPS で構築した場合との比較:
+
+| 構成 | 月額 |
+|------|----:|
+| **現構成** | **約 ¥7,000** |
+| 国内 VPS（24GB クラス） | ¥7,000〜¥26,000 |
+
+VPS 単体と同価格帯で Terraform 管理・k3s・Tailscale・VictoriaMetrics・BigQuery・Discord 通知一式を実現しています。
+
+---
+
+## 実証された成果
+
+| 指標 | 値 |
 |------|-----|
-| GCE 静的IP | `35.200.78.252` |
-| Tailscale GCE | `100.124.222.31` |
-| Tailscale k3s-worker | `100.107.122.45` |
-| k3s Service CIDR | `10.43.0.0/16` |
+| **月間クラウド支出** | 約 ¥7,000（GCE 2台 + BQ + Pub/Sub） |
+| **コスト削減率** | GKE 構成比 **64% 削減**（¥19,700 → ¥7,000） |
+| **遅延** | Tailscale Direct ≈ 20ms（東京リージョン経由） |
+| **メトリクス解像度** | VM 上 1 秒 / BigQuery 15 秒集約 |
+| **障害検知** | オンプレ沈黙・MOTD 欠落・鍵期限切れを自動アラート |
+| **Terraform apply 時間** | VM プロビジョニング + cloud-init 約 5 分 |
 
 ---
 
-## 🎮 プレイヤー接続フロー
+## ロードマップ
 
-```mermaid
-sequenceDiagram
-    participant P as Player (Java)
-    participant GCE as GCE mc-proxy-1
-    participant TS as Tailscale VPN
-    participant K3S as k3s-worker
+### 完了済み
 
-    P->>GCE: TCP :25565
-    GCE->>GCE: nginx → Velocity :25577
-    GCE->>TS: Tailscale 100.107.122.45
-    TS->>K3S: NodePort :30067 (Lobby)
-    K3S-->>P: Join Lobby
+- GKE → GCE 移行・LB 統合・NAT 廃止
+- Velocity / nginx-stream 廃止（socat 直結に統一）
+- VictoriaMetrics + VictoriaLogs 監視スタックを GCE 専用 VM へ移行
+- BigQuery `cost_analysis_view`（課金 Export × server_metrics 日次 JOIN）
+- GCS バックアップ（月次 / lifecycle 管理）
+- 課金アラート Discord 通知（Pub/Sub pull）
+- vmalert + Alertmanager によるメトリクスアラート統一
+- GCE プロキシを Autohealing MIG 化
+- VictoriaLogs + Vector ログパイプライン
 
-    Note over P,K3S: /server survival
+### 今後
 
-    K3S->>K3S: Velocity → NodePort :30065
-    K3S-->>P: Join Survival
-```
-
-```mermaid
-sequenceDiagram
-    participant P as Player (Bedrock)
-    participant GCE as GCE mc-proxy-1
-    participant TS as Tailscale VPN
-    participant BDS as k3s BDS
-
-    P->>GCE: UDP :19132
-    GCE->>GCE: socat fork 透過転送
-    GCE->>TS: Tailscale 100.107.122.45:19132
-    TS->>BDS: hostPort :19132
-    BDS-->>P: Join
-```
+- Looker Studio 公開ダッシュボード（`cost_analysis_view` 可視化）
+- External Secrets Operator（k3s Secret 管理の外部化）
+- Status Platform: Kotlin API + Flutter Web + Cloudflare Tunnel
+- Argo CD 導入（k8s マニフェストの GitOps 化）
+- バックアップ・リストア Runbook 整備
 
 ---
 
-## 💰 コスト構成
+## ドキュメント
 
-| 項目 | 月額 |
-|------|------|
-| GCE e2-medium (asia-northeast1-b) | ¥3,500 |
-| pd-balanced 20GB | ¥120 |
-| 静的IP × 1（VM アタッチ中は無料） | ¥0 |
-| Egress | ~¥50 |
-| Secret Manager | ¥0〜10 |
-| **GCP 合計** | **約 ¥3,680/month** |
-| オンプレ電気代 | ~¥3,000/month |
-| **総合計** | **約 ¥6,680/month** |
-
-> 移行前（GKE Standard）: ¥19,700/month → **81% 削減達成**
-
----
-
-## 📁 リポジトリ構成
-
-```
-.
-├── gce/                          # GCE プロキシ VM 構成
-│   ├── compose.yaml              # velocity + nginx-stream + socat-bedrock
-│   ├── nginx/nginx.conf          # TCP 25565 stream proxy
-│   ├── velocity/                 # velocity.toml, forwarding.secret.example
-│   ├── systemd/                  # mc-proxy.service, fetch-secrets.sh
-│   └── cloud-init.yaml           # VM 初期セットアップ
-│
-├── Terraform/                    # インフラプロビジョニング
-│   ├── gce.tf                    # GCE VM, SA, Firewall, 静的IP
-│   ├── gke.tf                    # VPC, Firewall（GKE リソースは削除済み）
-│   ├── proxmox.tf                # Proxmox VM (k3s-worker, k3s-monitoring)
-│   └── variables.tf / main.tf
-│
-├── Ansible/                      # k3s セットアップ
-│   ├── install_k3s.yml
-│   └── deploy_minecraft.yml
-│
-├── k8s/onprem/                   # オンプレ k3s マニフェスト
-│   ├── backend-servers.yaml      # BDS Deployment + tailscale-subnet-router
-│   ├── bds-backup-cronjob.yaml   # 日次バックアップ CronJob (MinIO)
-│   ├── 30-prometheus-monitoring.yaml
-│   └── helm/                     # Java サーバー Helm Chart
-│       ├── minecraft-server/     # Chart テンプレート
-│       ├── values-survival.yaml
-│       ├── values-industry.yaml
-│       └── values-lobby.yaml
-│
-└── Documents/                    # ドキュメント
-    ├── README/                   # Wiki ホーム・ガイド
-    ├── Mermaids/                 # Mermaid ダイアグラム
-    ├── OperationPostmortem/      # 障害振り返り
-    └── Task_mds/                 # 作業手順書
-```
-
----
-
-## 🚀 クイックスタート
-
-### 前提条件
-
-- Terraform >= 1.5.0
-- Ansible
-- kubectl / k3s kubeconfig
-- gcloud CLI（認証済み）
-- Tailscale アカウント
-
-### 1. GCE VM 構築
-
-```bash
-cd Terraform
-cp secret.tfvars.template secret.tfvars
-# secret.tfvars を編集（Proxmox 認証情報, SSH 公開鍵）
-
-terraform init
-terraform plan -var-file=secret.tfvars
-terraform apply -var-file=secret.tfvars
-```
-
-VM 起動後、cloud-init が Docker / Tailscale / mc-proxy.service をプロビジョニング（約 3〜5 分）。
-
-### 2. GCE 動作確認
-
-```bash
-# SSH（IAP 経由）
-gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap
-
-# VM 内
-docker compose -f /opt/mc-proxy/compose.yaml ps
-tailscale ping --until-direct 100.107.122.45
-
-# 外部疎通テスト
-nc -zv 35.200.78.252 25565      # Java TCP
-nc -zuv 35.200.78.252 19132     # Bedrock UDP
-```
-
-### 3. オンプレミス k3s マニフェスト適用
-
-```bash
-# BDS / tailscale-router
-kubectl --kubeconfig k8s/onprem/onprem_kubeconfig.yaml apply -f k8s/onprem/backend-servers.yaml
-
-# Java サーバー（Helm）
-helm --kubeconfig k8s/onprem/onprem_kubeconfig.yaml upgrade --install \
-  mc-lobby k8s/onprem/helm/minecraft-server \
-  -f k8s/onprem/helm/values-lobby.yaml -n minecraft
-
-# 監視
-kubectl --kubeconfig k8s/onprem/onprem_kubeconfig.yaml apply -f k8s/onprem/30-prometheus-monitoring.yaml
-```
-
----
-
-## 📊 監視体制
-
-```mermaid
-flowchart LR
-    subgraph Sources
-        MC["mc-monitor sidecar\n:8080/metrics"]
-    end
-
-    subgraph Collection
-        Prom["Prometheus\n(k3s-monitoring)"]
-    end
-
-    subgraph Visualization
-        Grafana["Grafana\n(Tailscale経由アクセス)"]
-    end
-
-    MC --> Prom
-    Prom --> Grafana
-```
-
----
-
-## 📚 ドキュメント
-
-| ドキュメント | 説明 |
+| ドキュメント | 内容 |
 |-------------|------|
-| [[neoforge-mod-guide]] | NeoForge サーバーへの MOD 追加ガイド |
-| [[OperationPostmortem/Template]] | 障害振り返りテンプレート |
-| [[Task_mds/restore-bedrock-world]] | BDS ワールドリストア手順 |
-| [[Task_mds/fix-nasu-golem-vv]] | Nasu Golem VV 対応化手順 |
+| [OVERVIEW.md](OVERVIEW.md) | コンポーネント詳細・運用ルール・ディレクトリ構成 |
+| [ADRs.md](ADRs.md) | アーキテクチャ決定記録（技術選定の背景と根拠） |
+| [OperationPostmortem/](../OperationPostmortem/) | 障害ポストモーテム |
 
 ---
 
-## 📝 ブランチ戦略
+## Author
 
-| ブランチ | 用途 |
-|----------|------|
-| `main` | 本番適用済み安定版 |
-| `feature/*` | 機能追加 |
-| `fix/*` | バグ修正 |
+**田籠 勇吉 (Tagomori Yukichi)**
 
----
-
-## 👤 Author
-
-**HN:田籠 勇吉(Tagomori0211)**
-
-- インフラエンジニア / SRE志望
-- ハイブリッドクラウド・IaC実践ポートフォリオ
+- GitHub: [@Tagomori0211](https://github.com/Tagomori0211)
+- インフラエンジニア / SRE 志望
+- ハイブリッドクラウド・IaC 実践ポートフォリオ
 
 ---
 
-> **License**: MIT License
+> MIT License
