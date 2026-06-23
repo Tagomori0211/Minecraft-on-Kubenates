@@ -41,10 +41,169 @@ Java版・Bedrock版の両対応に加え、**VictoriaMetrics + Grafana によ�
 ## 🏗️ アーキテクチャ
 
 ### ゲームトラフィック
-![infrastructure](Documents/Mermaids/infrastructure.svg)
+```mermaid
+%%{init: {'theme':'dark', 'themeVariables': {
+  'lineColor':'#94a3b8'
+}}}%%
+flowchart LR
+subgraph Legend["GameTraffic Architecture"]
+    %% ───────────── プレイヤー ─────────────
+    Player_Java["☕ Java版プレイヤー<br/><b>25565/TCP</b>"]
+    Player_Bedrock["🪨 Bedrock版プレイヤー<br/><b>19132/UDP</b>"]
+
+    %% ───────────── GCE エントランス ─────────────
+    subgraph GCE["☁️ GCE エントランス : e2-micro / 1GB"]
+        direction TB
+        subgraph Compose["🐳 Docker Compose — host network"]
+            SocatTCP["socat-tcp<br/>TCP4-LISTEN:25565,fork<br/>→ 100.107.122.45:30065"]
+            SocatUDP["socat-bedrock<br/>UDP4-LISTEN:19132,fork<br/>→ 100.107.122.45:19132"]
+        end
+        TailscaledGCE["🔐 tailscaled (systemd)<br/>gce-mc-proxy : 100.124.222.31"]
+    end
+
+    %% ───────────── Tailscale VPN ─────────────
+    subgraph TS["🛡️ Tailscale VPN (WireGuard)"]
+        TS_Net["暗号化トンネル<br/>Direct < 1ms"]
+    end
+
+    %% ───────────── オンプレ k3s ─────────────
+    subgraph Onprem["🏠 オンプレミス : Ryzen 5700G / 64GB"]
+        TailscaledK3s["🔐 tailscaled (host)<br/>k3s-worker-1 : 100.107.122.45"]
+        subgraph K3s["⎈ k3s クラスタ — namespace: minecraft"]
+            direction TB
+            subgraph Survival["☕ deploy-survival — Port 30065 / 30Gi"]
+                direction TB
+                SvMc["minecraft<br/>itzg/minecraft-server<br/>NeoForge 21.1.228 (REV17)"]
+
+            end
+            subgraph Bedrock["🪨 deploy-bedrock — Port 19132 / 8Gi"]
+                direction TB
+                BdSrv["bedrock<br/>itzg/minecraft-bedrock-server"]
+
+            end
+
+        end
+    end
+end
+
+    %% ───────────── データフロー ─────────────
+    Player_Java    -->|"25565/TCP"| SocatTCP
+    Player_Bedrock -->|"19132/UDP"| SocatUDP
+
+    SocatTCP -->|":30065"| TailscaledGCE
+    SocatUDP -->|"UDP fork"| TailscaledGCE
+    TailscaledGCE <-->|"Direct"| TS_Net
+    TS_Net <-->|"暗号化"| TailscaledK3s
+
+    TailscaledK3s -->|":30065"| Survival
+    TailscaledK3s -->|":19132"| Bedrock
+
+
+
+    %% ───────────── スタイル ─────────────
+    classDef player    fill:#b91c1c,color:#fff,stroke:#0369a1,stroke-width:2px;
+    classDef playerBed fill:#15803d,color:#fff,stroke:#3f6212,stroke-width:2px;
+    classDef socat     fill:#0d9488,color:#fff,stroke:#0f766e,stroke-width:1.5px;
+    classDef tsnode    fill:#7c3aed,color:#fff,stroke:#5b21b6,stroke-width:1.5px;
+    classDef tsnet     fill:#312e81,color:#fff,stroke:#a5b4fc,stroke-width:1.5px;
+    classDef svComp    fill:#b91c1c,color:#fff,stroke:#7f1d1d,stroke-width:1.5px;
+    classDef bdComp    fill:#15803d,color:#fff,stroke:#14532d,stroke-width:1.5px;
+    classDef ext       fill:#1e293b,color:#e2e8f0,stroke:#64748b,stroke-width:1.5px;
+
+    class Player_Java player;
+    class Player_Bedrock playerBed;
+    class SocatTCP,SocatUDP socat;
+    class TailscaledGCE,TailscaledK3s tsnode;
+    class TS_Net tsnet;
+    class SvMc,SvMon,SvLog svComp;
+    class BdSrv,BdMon bdComp;
+    
+    style GCE        fill:#23237d,color:#ffffff,stroke:#2563eb,stroke-width:3px;
+    style Compose    fill:#bfdbfe,color:#1e3a8a,stroke:#3b82f6,stroke-width:2px;
+    style TS         fill:#ede9fe,color:#4c1d95,stroke:#7c3aed,stroke-width:3px;
+    style Onprem     fill:#442222,color:#ffffff,stroke:#443333,stroke-width:3px;
+    style K3s        fill:#14A65F,color:#ffffff,stroke:#fff,stroke-width:2px;
+    style Survival   fill:#fee2e2,color:#7f1d1d,stroke:#dc2626,stroke-width:2px;
+    style Bedrock    fill:#dcfce7,color:#14532d,stroke:#16a34a,stroke-width:2px;
+    style Legend     fill:#222222,color:#ffffff,stroke:#ffffff,stroke-width:3px;
+
+```
 
 ### 監視・通知系
-![monitoring](Documents/Mermaids/monitoring.svg)
+```mermaid
+
+flowchart LR
+    subgraph K3s["k3s-worker VM (オンプレ)"]
+        MC_Pods["Minecraft Pods (ClusterIP :8080)<br>minecraft-exporter<br>Java:survival / BE:bedrock"]
+        VMAgent["vmagent<br>収集エージェント<br>scrape間隔 1s"]
+        BQ_Job["BQ挿入ジョブPod<br>VMへクエリ<br>15s解像度でサンプリング挿入"]
+        VectorDS["Vector DaemonSet<br>minecraft namespace<br>Podログ読取"]
+        MC_Pods -->|scrape| VMAgent
+        MC_Pods -.->|ログ| VectorDS
+    end
+
+    subgraph GCE_Mon["GCE: mc-monitoring-1 (e2-small)<br>Docker-compose"]
+        VM["VictoriaMetrics<br>8428 / 保持 14日<br>(長期は BQ)"]
+        VLogs["VictoriaLogs<br>9428 / 保持 30日"]
+        VectorAgg["Vector Aggregator<br>:9001"]
+        Grafana["Grafana<br>(アクセスはTailscale経由のみ)"]
+        VMAlert["vmalert<br>ルール評価 30s<br>沈黙/Down/scrape/鍵期限"]
+        AM["Alertmanager<br>:9093"]
+        AMD["alertmanager-discord<br>ブリッジ"]
+        Alert_Job["discord-notifier<br>課金 5分pull"]
+    end
+
+    subgraph GCP_Svc["GCP マネージドサービス"]
+        PubSub["Pub/Sub<br>alerts<br>(pull subscription)"]
+        Budget["課金予算アラート<br>80%/90%/100%発火"]
+        BQ[("BigQuery<br>minecraft_monitoring<br>server_metrics")]
+    end
+
+    Admin["🔧 管理者"]
+    Discord["💬 Discord"]
+
+    VMAgent -->|remote_write| VM
+    VM --> Grafana
+    VM --> BQ_Job
+
+    VectorDS -->|Tailscale :9001| VectorAgg
+    VectorAgg -->|Loki API push| VLogs
+    VLogs --> Grafana
+    Grafana --> Admin
+
+    VM -->|ルール評価| VMAlert
+    VMAlert -->|発火| AM
+    AM -->|webhook| AMD
+    AMD -->|Discord embed| Discord
+
+    Budget --> PubSub
+    PubSub -->|課金アラート| Alert_Job
+    BQ_Job -->|15s insert| BQ
+
+    Alert_Job -->|課金超過アラート| Discord
+
+    style K3s        fill:#C62828,color:#fff
+    style MC_Pods    fill:#424242,color:#fff,stroke:#f87171
+    style VMAgent    fill:#e6522c,color:#fff
+    style VectorDS   fill:#08b3a6,color:#fff
+    style GCE_Mon    fill:#0F9D58,color:#fff,stroke:#fff,stroke-width:2px
+    style VM         fill:#e6522c,color:#fff
+    style VLogs      fill:#a259ff,color:#fff
+    style VectorAgg  fill:#08b3a6,color:#fff
+    style Grafana    fill:#f46800,color:#fff
+    style BQ_Job     fill:#4285F4,color:#fff
+    style VMAlert    fill:#e6522c,color:#fff
+    style AM         fill:#e6522c,color:#fff
+    style AMD        fill:#5865F2,color:#fff
+    style Alert_Job  fill:#7F52FF,color:#fff
+    style GCP_Svc    fill:#2962FF,color:#fff,stroke:#82B1FF
+    style BQ         fill:#123564,color:#fff
+    style PubSub     fill:#E65100,color:#fff
+    style Budget     fill:#F57F17,color:#fff
+    style Admin      fill:#37474F,color:#fff
+    style Discord    fill:#5865F2,color:#fff
+
+```
 
 ---
 
