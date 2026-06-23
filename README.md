@@ -41,13 +41,13 @@ Java版・Bedrock版の両対応に加え、**VictoriaMetrics + Grafana によ�
 ## 🏗️ アーキテクチャ
 
 ### ゲームトラフィック
-![infrastructure](Documents/Mermaids/GameTraffic.png)
+![infrastructure](Documents/Mermaids/infrastructure.mermaid)
 
 ### 監視・通知系
-![monitoring](Documents/Mermaids/monitoring.svg)
+![monitoring](Documents/Mermaids/monitoring.mermaid)
 
 ### k3s-worker メモリ配分
-![pie](Documents/Mermaids/MenResource.svg)
+![pie](Documents/Mermaids/MenResource.mermaid)
 
 ---
 
@@ -305,12 +305,12 @@ Secret Manager で以下を管理:
 - メトリクス収集を 1 秒解像度へ・BigQuery 集積を k3s Pod（15 秒解像度）へ再設計
 - mc-proxy を autohealing MIG 化（TCP:25565 ヘルスチェック・静的IP 維持）
 - メトリクスアラートを vmalert + Alertmanager + alertmanager-discord に統一（オンプレ沈黙は vmalert ルール化、課金は Pub/Sub 継続）
-
+- [Status Platform](https://github.com/Tagomori0211/cloud-observability-gateway) : Kotlin API + Flutter Web + Envoy + Cloudflare Tunnel
 ### 🔲 今後
 
 - [ ] **Looker Studio ダッシュボード**: cost_analysis_view を基にした公開向けレポート
 - [ ] **External Secrets Operator**: k3s Secret 管理の外部化
-- [ ] **Status Platform** (Phase 3): Kotlin API + Flutter Web + Envoy + Cloudflare Tunnel
+
 - [ ] **Disaster Recovery 手順**: バックアップからのリストア演習・runbook 文書化
 - [ ] **Argo CD 導入**: k3s マニフェストの GitOps 化
 
