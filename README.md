@@ -42,13 +42,9 @@ Java版・Bedrock版の両対応に加え、**VictoriaMetrics + Grafana によ�
 
 ### ゲームトラフィック
 ![infrastructure](Documents/Mermaids/infrastructure.svg)
-<iframe src="Documents/Mermaids/infrastructure.mermaid" width="100%" height="400"></iframe>
 
 ### 監視・通知系
 ![monitoring](Documents/Mermaids/monitoring.svg)
-
-### k3s-worker メモリ配分
-![pie](Documents/Mermaids/MenResource.svg)
 
 ---
 
