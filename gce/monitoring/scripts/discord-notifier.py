@@ -7,6 +7,9 @@ Pub/Sub Pull サブスクリプション billing-alerts-gce-pull をポーリン
   - HealthCheck が publish したオンプレ沈黙アラート（{"type":"onprem_silence"}）
 を判別して Discord に embed 通知を送信して ACK する。
 
+重複抑制: 同じしきい値(90%/100%)は当月内に1度だけ通知する。
+          月初に月文字列が変わったら自動リセット。
+
 認証: GCE VM (mc-monitoring-1) の mc-monitoring-sa ADC（メタデータサーバー経由）
       → Pub/Sub subscriber + Secret Manager (webhook) アクセス権が必要（Terraform/notifications.tf）
 """
@@ -15,6 +18,7 @@ import json
 import sys
 import time
 import urllib.request
+from datetime import datetime, timezone, timedelta
 
 
 PROJECT_ID   = "project-61cf5742-d0ea-45ed-ac0"
@@ -22,6 +26,24 @@ SUBSCRIPTION = f"projects/{PROJECT_ID}/subscriptions/billing-alerts-gce-pull"
 SECRET_NAME  = "mc-discord-webhook-url"
 # 5 分間隔ループ（compose の restart で常駐）
 LOOP_INTERVAL = 300
+
+# 当月通知済みしきい値マップ: {threshold_pct_int: "YYYY-MM"}（月初に月文字列が変わると自動リセット）
+_notified_budget_thresholds: dict[int, str] = {}
+JST = timezone(timedelta(hours=9))  # 日本標準時
+
+
+def _current_month_key() -> str:
+    """JST での現在の年月キー（"YYYY-MM"）を返す。月初リセット判定に使用。"""
+    return datetime.now(JST).strftime("%Y-%m")
+
+
+def _should_notify(threshold_pct: int) -> bool:
+    """当月まだ通知していないしきい値なら True、通知済みなら False。"""
+    month_key = _current_month_key()
+    if _notified_budget_thresholds.get(threshold_pct) == month_key:
+        return False
+    _notified_budget_thresholds[threshold_pct] = month_key
+    return True
 
 
 def _get_access_token() -> str:
@@ -97,7 +119,7 @@ def _silence_embed(data: dict) -> dict:
     }
 
 
-def _budget_embed(data: dict):
+def _budget_embed(data: dict) -> dict | None:
     """GCP Budget アラート embed を構築する。閾値超過なしなら None。"""
     threshold = float(data.get("alertThresholdExceeded", 0))
     if threshold == 0:
@@ -142,8 +164,19 @@ def _handle_message(webhook_url: str, data: dict) -> None:
     if embed is None:
         print("閾値超過なし: ACK のみ実行", flush=True)
         return
+
+    # 重複抑制: 当月すでに通知済みのしきい値はスキップ
+    threshold = float(data.get("alertThresholdExceeded", 0))
+    threshold_pct = int(round(threshold * 100))
+    if not _should_notify(threshold_pct):
+        print(
+            f"課金アラート {threshold_pct}% は当月通知済みのためスキップ（ACK のみ実行）",
+            flush=True,
+        )
+        return
+
     _post_discord(webhook_url, embed)
-    print("Discord 通知送信完了: 課金アラート", flush=True)
+    print(f"Discord 通知送信完了: 課金アラート {threshold_pct}%", flush=True)
 
 
 def poll_once() -> None:
