@@ -237,7 +237,7 @@ spec:
             - { name: ALLOW_CHEATS, value: "true" }
             - { name: MAX_PLAYERS, value: "25" }
             - { name: ALLOW_LIST, value: "false" }
-            - { name: LEVEL_NAME, value: "Bedrock level" }   # 2026-06-21 明示固定（破損ワールド昇格に伴い）
+            - { name: LEVEL_NAME, value: "sushi_server" }   # 2026-08-26 sushi.zip からリストアしワールド切替
             - { name: VIEW_DISTANCE, value: "48" }            # 過大値。トンネル越し前提では 12 程度推奨
             - { name: TICK_DISTANCE, value: "8" }
             - { name: PLAYER_IDLE_TIMEOUT, value: "30" }
