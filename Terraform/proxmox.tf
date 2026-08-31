@@ -112,7 +112,7 @@ resource "proxmox_vm_qemu" "s3_vms" {
   os_type    = "cloud-init"
   ipconfig0  = "ip=${each.value.ip}/24,gw=${var.common_config.gateway}"
   ciuser     = "shinari"
-  cipassword = "midnight"
+  cipassword = var.proxmox_cipassword != "" ? var.proxmox_cipassword : null
   sshkeys    = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJWXNnEkJ02Y0iu+UNgeNjcy7a5oG/Mz1k1paubut+rv shinari@code-server-vm\n${var.ssh_public_key}"
 
   agent = 1

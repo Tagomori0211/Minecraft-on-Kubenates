@@ -140,3 +140,11 @@ variable "common_config" {
     target_node = string
   })
 }
+
+variable "proxmox_cipassword" {
+  description = "Proxmox cloud-init password"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
