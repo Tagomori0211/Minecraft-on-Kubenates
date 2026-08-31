@@ -61,11 +61,12 @@ metadata:
 data:
   monitor.py: |
     #!/usr/bin/env python3
-    import glob, socket, struct, time, random, threading
+    import glob, socket, struct, time, random, threading, os
     from http.server import HTTPServer, BaseHTTPRequestHandler
 
     MAGIC = b'\x00\xff\xff\x00\xfe\xfe\xfe\xfe\xfd\xfd\xfd\xfd\x12\x34\x56\x78'
-    HOST, PORT = '127.0.0.1', 19132
+    HOST = os.environ.get('PING_HOST', '35.200.78.252')
+    PORT = int(os.environ.get('PING_PORT', 19132))
     INTERVAL, TIMEOUT = 15, 5
     DATA_DIR = '/data'
 
@@ -265,6 +266,9 @@ spec:
         - name: mc-monitor
           image: python:3.12-alpine
           command: ["python3", "/scripts/monitor.py"]
+          env:
+            - { name: PING_HOST, value: "35.200.78.252" }
+            - { name: PING_PORT, value: "19132" }
           ports:
             - containerPort: 8080
               name: metrics
