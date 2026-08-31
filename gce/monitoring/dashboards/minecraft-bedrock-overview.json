@@ -23,7 +23,7 @@
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
       "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ], "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
-      "targets": [ { "refId": "A", "expr": "minecraft_status_healthy{component=\"bedrock\"}" } ]
+      "targets": [ { "refId": "A", "expr": "max by (component) (minecraft_status_healthy{component=\"bedrock\"})" } ]
     },
     {
       "type": "stat",
@@ -32,7 +32,7 @@
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "steps": [ { "color": "blue", "value": null } ] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
-      "targets": [ { "refId": "A", "expr": "minecraft_status_players_online_count{component=\"bedrock\"}", "legendFormat": "online" } ]
+      "targets": [ { "refId": "A", "expr": "max by (component) (minecraft_status_players_online_count{component=\"bedrock\"})", "legendFormat": "online" } ]
     },
     {
       "type": "stat",
@@ -41,7 +41,7 @@
       "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "red", "value": 1 } ] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
-      "targets": [ { "refId": "A", "expr": "minecraft_status_response_time_seconds{component=\"bedrock\"}" } ]
+      "targets": [ { "refId": "A", "expr": "max by (component) (minecraft_status_response_time_seconds{component=\"bedrock\"})" } ]
     },
     {
       "type": "stat",
@@ -50,7 +50,7 @@
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
-      "targets": [ { "refId": "A", "expr": "minecraft_status_players_max_count{component=\"bedrock\"}", "legendFormat": "最大人数" } ]
+      "targets": [ { "refId": "A", "expr": "max by (component) (minecraft_status_players_max_count{component=\"bedrock\"})", "legendFormat": "最大人数" } ]
     },
     {
       "type": "row",
@@ -64,8 +64,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
       "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 15, "showPoints": "never" } } },
       "targets": [
-        { "refId": "A", "expr": "minecraft_status_players_online_count{component=\"bedrock\"}", "legendFormat": "online" },
-        { "refId": "B", "expr": "minecraft_status_players_max_count{component=\"bedrock\"}", "legendFormat": "max" }
+        { "refId": "A", "expr": "max by (component) (minecraft_status_players_online_count{component=\"bedrock\"})", "legendFormat": "online" },
+        { "refId": "B", "expr": "max by (component) (minecraft_status_players_max_count{component=\"bedrock\"})", "legendFormat": "max" }
       ]
     },
     {
@@ -74,7 +74,7 @@
       "datasource": { "type": "prometheus", "uid": "victoria-metrics" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
       "fieldConfig": { "defaults": { "unit": "s", "min": 0, "custom": { "fillOpacity": 15, "showPoints": "never" } } },
-      "targets": [ { "refId": "A", "expr": "minecraft_status_response_time_seconds{component=\"bedrock\"}", "legendFormat": "response" } ]
+      "targets": [ { "refId": "A", "expr": "max by (component) (minecraft_status_response_time_seconds{component=\"bedrock\"})", "legendFormat": "response" } ]
     },
     {
       "type": "row",
