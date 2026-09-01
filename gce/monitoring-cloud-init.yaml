@@ -90,7 +90,7 @@ runcmd:
 
   # monitoring スタック配置
   - mkdir -p /opt/mc-monitoring
-  - git clone --depth=1 https://github.com/Tagomori0211/Minecraft_java_k3s.git /tmp/repo
+  - git clone --depth=1 https://github.com/Tagomori0211/Minecraft-on-Kubenates.git /tmp/repo
   - cp -r /tmp/repo/gce/monitoring/. /opt/mc-monitoring/
   - rm -rf /tmp/repo
 

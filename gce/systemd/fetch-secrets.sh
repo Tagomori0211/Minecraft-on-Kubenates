@@ -14,12 +14,14 @@ readonly TARGET_FILE="/opt/mc-proxy/velocity/forwarding.secret"
 
 mkdir -p "$(dirname "${TARGET_FILE}")"
 
-# Secret Manager から最新版を取得（gcloud は cloud-init でインストール済み前提）
-gcloud secrets versions access latest \
-  --secret="${SECRET_NAME}" \
-  > "${TARGET_FILE}"
-
-chmod 600 "${TARGET_FILE}"
-chown root:root "${TARGET_FILE}"
-
-echo "[fetch-secrets] forwarding.secret を ${TARGET_FILE} に配置しました"
+# Secret Manager から最新版を取得（Secret が存在する場合のみ取得）
+if gcloud secrets describe "${SECRET_NAME}" >/dev/null 2>&1; then
+  gcloud secrets versions access latest \
+    --secret="${SECRET_NAME}" \
+    > "${TARGET_FILE}"
+  chmod 600 "${TARGET_FILE}"
+  chown root:root "${TARGET_FILE}"
+  echo "[fetch-secrets] forwarding.secret を ${TARGET_FILE} に配置しました"
+else
+  echo "[fetch-secrets] NOTICE: ${SECRET_NAME} が存在しないため取得をスキップします"
+fi

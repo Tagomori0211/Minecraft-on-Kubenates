@@ -83,7 +83,7 @@ gcloud secrets list --project=$PROJECT
 ## Phase 1〜2: VM 作成（Terraform）
 
 ```bash
-cd /home/shinari/Minecraft_java_k3s/Terraform
+cd /home/shinari/MC_k3s/Terraform
 
 # プラン確認（追加のみ・GKE 無傷を確認）
 terraform plan -var-file=secret.tfvars
@@ -146,7 +146,7 @@ terraform apply -var-file=secret.tfvars
 gcloud compute addresses delete minecraft-unified-ip --region=asia-northeast1
 
 # 3. k8s/gke/ 削除
-rm -rf /home/shinari/Minecraft_java_k3s/k8s/gke
+rm -rf /home/shinari/MC_k3s/k8s/gke
 ```
 
 ## ロールバック
