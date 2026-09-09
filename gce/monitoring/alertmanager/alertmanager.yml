@@ -15,9 +15,18 @@ route:
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
+  routes:
+    # Tailscale auth-key ローテは手動運用（Secret Manager を人手で再発行）のため、
+    # 期限接近アラートは Alertmanager UI 上には残しつつ Discord 通知は抑止する。
+    # 鍵ローテ時は vmalert/rules/minecraft.yml の epoch を更新すること。
+    - matchers:
+        - alertname="TailscaleAuthKeyExpiringSoon"
+      receiver: 'null'
 
 receivers:
   - name: discord
     webhook_configs:
       - url: http://alertmanager-discord:9094
         send_resolved: true
+  # 通知を出さない受信先（Discord 抑止用）
+  - name: 'null'
